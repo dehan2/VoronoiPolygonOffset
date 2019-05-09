@@ -1,0 +1,4 @@
+#pragma once
+
+enum EDGE_TYPE {FLUFF, BRANCH, TRUNK};
+enum TRAVERSE_STATUS {START, END, SPLIT, CONNECT};

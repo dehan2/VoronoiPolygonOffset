@@ -1,29 +1,175 @@
-<UI version="4.0" >
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
  <class>VoronoiPolygonOffsetClass</class>
- <widget class="QMainWindow" name="VoronoiPolygonOffsetClass" >
-  <property name="objectName" >
-   <string notr="true">VoronoiPolygonOffsetClass</string>
-  </property>
-  <property name="geometry" >
+ <widget class="QMainWindow" name="VoronoiPolygonOffsetClass">
+  <property name="geometry">
    <rect>
-	<x>0</x>
-	<y>0</y>
-	<width>600</width>
-	<height>400</height>
+    <x>0</x>
+    <y>0</y>
+    <width>1113</width>
+    <height>650</height>
    </rect>
   </property>
-  <property name="windowTitle" >
+  <property name="windowTitle">
    <string>VoronoiPolygonOffset</string>
   </property>
-  <widget class="QMenuBar" name="menuBar" />
-  <widget class="QToolBar" name="mainToolBar" />
-  <widget class="QWidget" name="centralWidget" />
-  <widget class="QStatusBar" name="statusBar" />
+  <widget class="QWidget" name="centralWidget">
+   <layout class="QHBoxLayout" name="horizontalLayout">
+    <item>
+     <widget class="QGraphicsView" name="graphicsView"/>
+    </item>
+    <item>
+     <widget class="QTabWidget" name="tabWidget">
+      <property name="maximumSize">
+       <size>
+        <width>250</width>
+        <height>16777215</height>
+       </size>
+      </property>
+      <widget class="QWidget" name="tab">
+       <attribute name="title">
+        <string>Tab 1</string>
+       </attribute>
+       <layout class="QVBoxLayout" name="verticalLayout">
+        <item>
+         <widget class="QPushButton" name="pushButton_open_polygon">
+          <property name="text">
+           <string>Open Polygon</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="pushButton_compute_VD">
+          <property name="text">
+           <string>Compute VD</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <layout class="QHBoxLayout" name="horizontalLayout_2">
+          <item>
+           <widget class="QDoubleSpinBox" name="doubleSpinBox_offsetAmount">
+            <property name="decimals">
+             <number>1</number>
+            </property>
+            <property name="maximum">
+             <double>1000.000000000000000</double>
+            </property>
+            <property name="value">
+             <double>10.000000000000000</double>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QPushButton" name="pushButton_compute_offset">
+            <property name="text">
+             <string>Compute Offset</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </item>
+        <item>
+         <spacer name="verticalSpacer">
+          <property name="orientation">
+           <enum>Qt::Vertical</enum>
+          </property>
+          <property name="sizeHint" stdset="0">
+           <size>
+            <width>20</width>
+            <height>40</height>
+           </size>
+          </property>
+         </spacer>
+        </item>
+       </layout>
+      </widget>
+      <widget class="QWidget" name="tab_2">
+       <attribute name="title">
+        <string>Tab 2</string>
+       </attribute>
+      </widget>
+     </widget>
+    </item>
+   </layout>
+  </widget>
+  <widget class="QMenuBar" name="menuBar">
+   <property name="geometry">
+    <rect>
+     <x>0</x>
+     <y>0</y>
+     <width>1113</width>
+     <height>21</height>
+    </rect>
+   </property>
+  </widget>
+  <widget class="QToolBar" name="mainToolBar">
+   <attribute name="toolBarArea">
+    <enum>TopToolBarArea</enum>
+   </attribute>
+   <attribute name="toolBarBreak">
+    <bool>false</bool>
+   </attribute>
+  </widget>
+  <widget class="QStatusBar" name="statusBar"/>
  </widget>
- <layoutDefault spacing="6" margin="11" />
- <pixmapfunction></pixmapfunction>
+ <layoutdefault spacing="6" margin="11"/>
  <resources>
-   <include location="VoronoiPolygonOffset.qrc"/>
+  <include location="VoronoiPolygonOffset.qrc"/>
  </resources>
- <connections/>
-</UI>
+ <connections>
+  <connection>
+   <sender>pushButton_open_polygon</sender>
+   <signal>clicked()</signal>
+   <receiver>VoronoiPolygonOffsetClass</receiver>
+   <slot>open_polygon_file()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>956</x>
+     <y>83</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>1109</x>
+     <y>91</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>pushButton_compute_VD</sender>
+   <signal>clicked()</signal>
+   <receiver>VoronoiPolygonOffsetClass</receiver>
+   <slot>compute_VD()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>1052</x>
+     <y>107</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>1113</x>
+     <y>142</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>pushButton_compute_offset</sender>
+   <signal>clicked()</signal>
+   <receiver>VoronoiPolygonOffsetClass</receiver>
+   <slot>compute_offset()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>940</x>
+     <y>139</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>1112</x>
+     <y>174</y>
+    </hint>
+   </hints>
+  </connection>
+ </connections>
+ <slots>
+  <slot>open_polygon_file()</slot>
+  <slot>compute_VD()</slot>
+  <slot>compute_offset()</slot>
+ </slots>
+</ui>
