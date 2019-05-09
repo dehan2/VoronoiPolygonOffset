@@ -282,6 +282,20 @@ pair<VEdge2D*, const VVertex2D*> VoronoiPolygonOffset::find_start_edge_pair()
 
 
 
+void VoronoiPolygonOffset::make_offset_vertex_for_branch(VEdge2D* branch, const float& offsetAmount, Offset& offset, 
+	list<rg_Point2D>& TStack, list<int>& CStack, set<VEdge2D*>& visitedEdges)
+{
+	if (visitedEdges.count(branch) == 0)
+	{
+		pair<bool, rg_Point2D> offsetVertex = find_offset_vertex_for_branch(branch, offsetAmount);
+		if (offsetVertex.first == true)
+			offset.add_offset_vertex(offsetVertex.second, branch);
+		visitedEdges.insert(branch);
+	}
+}
+
+
+
 pair<bool, rg_Point2D> VoronoiPolygonOffset::find_offset_vertex_for_branch(VEdge2D* branch, const float& offsetAmount)
 {
 	VVertex2D* convexVtx = nullptr;
@@ -330,6 +344,20 @@ pair<bool, rg_Point2D> VoronoiPolygonOffset::find_offset_vertex_for_branch(VEdge
 
 
 
+void VoronoiPolygonOffset::make_offset_vertex_for_fluff(VEdge2D* fluff, const float& offsetAmount, Offset& offset, 
+	list<rg_Point2D>& TStack, list<int>& CStack, set<VEdge2D*>& visitedEdges)
+{
+	if (visitedEdges.count(fluff) == 0)
+	{
+		pair<bool, rg_Point2D> offsetVertex = find_offset_vertex_for_fluff(fluff, offsetAmount);
+		if (offsetVertex.first == true)
+			offset.add_offset_vertex(offsetVertex.second, fluff);
+		visitedEdges.insert(fluff);
+	}
+}
+
+
+
 pair<bool, rg_Point2D> VoronoiPolygonOffset::find_offset_vertex_for_fluff(VEdge2D* fluff, const float& offsetAmount)
 {
 	VVertex2D* reflexVtx = nullptr;
@@ -356,6 +384,61 @@ pair<bool, rg_Point2D> VoronoiPolygonOffset::find_offset_vertex_for_fluff(VEdge2
 		offsetVtx = reflexVtx->getLocation() + edgeDirectionVector.getUnitVector()*offsetAmount;
 	}
 	return make_pair(doesOffsetVtxExist, offsetVtx);
+}
+
+
+
+void VoronoiPolygonOffset::make_offset_vertex_for_trunk(VEdge2D* trunk, const float& offsetAmount, vector<Offset>& offsets,
+	list<rg_Point2D>& TStack, list<int>& CStack, set<VEdge2D*>& visitedEdges, TRAVERSE_STATUS& status)
+{
+	pair<bool, rg_Point2D> offsetVertex = find_offset_vertex_for_trunk(trunk, offsetAmount);
+	if (offsetVertex.first == true)
+	{
+		switch (status)
+		{
+		case START:
+		case CONNECT:
+		{
+			if (!TStack.empty() && TStack.back().distance(offsetVertex.second) < 1.0E-3)
+			{
+				status = END;
+				offsets.at(CStack.back()).close_offset();
+				CStack.pop_back();
+			}
+			else
+			{
+				status = SPLIT;
+				TStack.push_back(offsetVertex.second);
+				offsets.at(CStack.back()).add_offset_vertex(offsetVertex.second, trunk);
+				offsets.push_back(Offset(offsets.size(), offsetAmount));
+				CStack.push_back(m_offsets.size() - 1);
+				cout << "Split" << endl;
+			}
+		}
+		break;
+		case END:
+		case SPLIT:
+		{
+			if (TStack.back().distance(offsetVertex.second) < 1.0E-3)
+			{
+				status = CONNECT;
+				CStack.pop_back();
+				cout << "Connect" << endl;
+			}
+			else
+			{
+				status = START;
+				TStack.push_back(offsetVertex.second);
+				offsets.at(CStack.back()).add_offset_vertex(offsetVertex.second, trunk);
+				cout << "Start" << endl;
+			}
+		}
+		break;
+		default:
+			cout << "Error case" << endl;
+			break;
+		}
+	}
 }
 
 
@@ -429,7 +512,13 @@ list<rg_Point2D> VoronoiPolygonOffset::calculate_offset_vertex_for_parabolic_edg
 	Generator2D* leftGenerator = polygonGenerators.first;
 	Generator2D* rightGenerator = polygonGenerators.second;
 
+	//left G -> vtx, right G -> edge
+	if (leftGenerator->type() == Generator2D::EDGE_G)
+		swap(leftGenerator, rightGenerator);
 
+
+
+	return list<rg_Point2D>();
 }
 
 
@@ -459,89 +548,22 @@ void VoronoiPolygonOffset::compute_offset()
 	CStack.push_back(IDOfInitialOffset);
 	TRAVERSE_STATUS status = START;
 
-	int traverseCounter = 0;
 	for (auto& insiderEdge : m_traverseList)
 	{
 		switch (m_mapForVEdgeType.at(insiderEdge))
 		{
 		case BRANCH:
-		{
-			if (visitedEdges.count(insiderEdge) == 0)
-			{
-				pair<bool, rg_Point2D> offsetVertex = find_offset_vertex_for_branch(insiderEdge, offsetAmount);
-				if (offsetVertex.first == true)
-					m_offsets.at(CStack.back()).add_offset_vertex(offsetVertex.second, insiderEdge);
-				visitedEdges.insert(insiderEdge);
-			}
-		}
+			make_offset_vertex_for_branch(insiderEdge, offsetAmount, m_offsets.at(CStack.back()), TStack, CStack, visitedEdges);
 			break;
 		case FLUFF:
-		{
-			if (visitedEdges.count(insiderEdge) == 0)
-			{
-				pair<bool, rg_Point2D> offsetVertex = find_offset_vertex_for_fluff(insiderEdge, offsetAmount);
-				if (offsetVertex.first == true)
-					m_offsets.at(CStack.back()).add_offset_vertex(offsetVertex.second, insiderEdge);
-				visitedEdges.insert(insiderEdge);
-			}
-		}
+			make_offset_vertex_for_fluff(insiderEdge, offsetAmount, m_offsets.at(CStack.back()), TStack, CStack, visitedEdges);
 			break;
 		case TRUNK:
-		{
-			pair<bool, rg_Point2D> offsetVertex = find_offset_vertex_for_trunk(insiderEdge, offsetAmount);
-			if (offsetVertex.first == true)
-			{
-				switch (status)
-				{
-				case START:
-				case CONNECT:
-				{
-					if (!TStack.empty() && TStack.back().distance(offsetVertex.second) < 1.0E-3)
-					{
-						status = END;
-						m_offsets.at(CStack.back()).close_offset();
-						CStack.pop_back();
-					}
-					else
-					{
-						status = SPLIT;	
-						TStack.push_back(offsetVertex.second);
-						m_offsets.at(CStack.back()).add_offset_vertex(offsetVertex.second, insiderEdge);
-						m_offsets.push_back(Offset(m_offsets.size(), offsetAmount));
-						CStack.push_back(m_offsets.size()-1);
-						cout << "Split" << endl;
-					}
-				}
-				break;
-				case END:
-				case SPLIT:
-				{
-					if (TStack.back().distance(offsetVertex.second) < 1.0E-3)
-					{
-						status = CONNECT;
-						CStack.pop_back();
-						cout << "Connect" << endl;
-					}
-					else
-					{
-						status = START;
-						TStack.push_back(offsetVertex.second);
-						m_offsets.at(CStack.back()).add_offset_vertex(offsetVertex.second, insiderEdge);
-						cout << "Start" << endl;
-					}
-				}
-				break;
-				default:
-					cout << "Error case" << endl;
-					break;
-				}
-			}		
-		}
+			make_offset_vertex_for_trunk(insiderEdge, offsetAmount, m_offsets, TStack, CStack, visitedEdges, status);
 			break;
 		default:
 			break;
 		}
-		traverseCounter++;
 	}
 
 	m_offsets.at(IDOfInitialOffset).close_offset();

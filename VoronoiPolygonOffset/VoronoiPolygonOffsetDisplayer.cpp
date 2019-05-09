@@ -63,7 +63,7 @@ void VoronoiPolygonOffsetDisplayer::draw_offsets()
 {
 	for (auto& offset : (*pOffsets))
 	{
-		list<OffsetVertex>& vertices = offset.get_vertices();
+		vector<OffsetVertex>& vertices = offset.get_vertices();
 		OffsetVertex* lastVtx = &vertices.back();
 
 		for (auto& vtx : vertices)

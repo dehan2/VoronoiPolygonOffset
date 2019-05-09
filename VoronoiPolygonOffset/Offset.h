@@ -10,8 +10,8 @@ class Offset
 {
 	int m_ID = -1;
 	float m_offsetAmount;
-	list<OffsetVertex> m_vertices;
-	list<OffsetEdge> m_edges;
+	vector<OffsetVertex> m_vertices;
+	vector<OffsetEdge> m_edges;
 
 public:
 	Offset();
@@ -20,8 +20,8 @@ public:
 	~Offset();
 
 	int get_ID() const { return m_ID; }
-	list<OffsetVertex>& get_vertices() { return m_vertices; }
-	list<OffsetEdge>& get_edges() { return m_edges; }
+	vector<OffsetVertex>& get_vertices() { return m_vertices; }
+	vector<OffsetEdge>& get_edges() { return m_edges; }
 
 	void set_ID(const int& ID) { m_ID = ID; }
 	void add_offset_vertex(const rg_Point2D& coord, VEdge2D* corrVEdge);

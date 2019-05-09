@@ -33,6 +33,8 @@ private:
 
 	list<VEdge2D*> m_traverseList;
 	map<const VEdge2D*, EDGE_TYPE> m_mapForVEdgeType;
+	map<const VEdge2D*, Offset*> m_mapFromEdgeToOffset;
+
 
 	//For Draw
 	VoronoiPolygonOffsetDisplayer* m_scene = nullptr;
@@ -48,8 +50,16 @@ public:
 	void make_traverse_list();
 	pair<VEdge2D*, const VVertex2D*> find_start_edge_pair();
 
+	void make_offset_vertex_for_branch(VEdge2D* branch, const float& offsetAmount, Offset& offset,
+		list<rg_Point2D>& TStack,	list<int>& CStack, set<VEdge2D*>& visitedEdges);
 	pair<bool, rg_Point2D> find_offset_vertex_for_branch(VEdge2D* branch, const float& offsetAmount);
+
+	void make_offset_vertex_for_fluff(VEdge2D* fluff, const float& offsetAmount, Offset& offset,
+		list<rg_Point2D>& TStack, list<int>& CStack, set<VEdge2D*>& visitedEdges);
 	pair<bool, rg_Point2D> find_offset_vertex_for_fluff(VEdge2D* fluff, const float& offsetAmount);
+
+	void make_offset_vertex_for_trunk(VEdge2D* trunk, const float& offsetAmount, vector<Offset>& offsets,
+		list<rg_Point2D>& TStack, list<int>& CStack, set<VEdge2D*>& visitedEdges, TRAVERSE_STATUS& status);
 	pair<bool, rg_Point2D> find_offset_vertex_for_trunk(VEdge2D* trunk, const float& offsetAmount);
 
 	list<rg_Point2D> calculate_points_for_trunk_edge(VEdge2D* trunk);
