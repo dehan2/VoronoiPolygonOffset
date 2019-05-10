@@ -22,29 +22,13 @@ Offset::~Offset()
 
 void Offset::add_offset_vertex(const rg_Point2D& coord, VEdge2D* corrVEdge)
 {
-	OffsetVertex* newVtx = nullptr;
-	OffsetEdge* lastEdge = nullptr;
-
-	if (m_edges.empty())
-	{
-		m_vertices.push_back(OffsetVertex(m_vertices.size(), coord, corrVEdge));
-		newVtx = &m_vertices.back();
-	}
-	else
-	{
-		lastEdge = &m_edges.back();
-		m_vertices.push_back(OffsetVertex(m_vertices.size(), coord, corrVEdge, lastEdge));
-		newVtx = &m_vertices.back();
-		m_edges.back().set_end_vertex(newVtx);
-	}
-		
-	m_edges.push_back(OffsetEdge(m_edges.size(), newVtx));
+	m_vertices.push_back(OffsetVertex(m_vertices.size(), coord, corrVEdge));
 }
 
 
 
 void Offset::close_offset()
 {
-	m_edges.back().set_end_vertex(&(m_vertices.front()));
-	m_vertices.front().set_prev_edge(&(m_edges.back()));
+	//m_edges.back().set_end_vertex(&(m_vertices.front()));
+	//m_vertices.front().set_prev_edge(&(m_edges.back()));
 }

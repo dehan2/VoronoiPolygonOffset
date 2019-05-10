@@ -16,7 +16,7 @@ class OffsetEdge
 public:
 	OffsetEdge();
 	OffsetEdge(const int& ID);
-	OffsetEdge(const int& ID, OffsetVertex* startVtx);
+	OffsetEdge(const int& ID, OffsetVertex* startVtx, OffsetVertex* endVtx);
 	OffsetEdge(const OffsetEdge& rhs);
 
 	OffsetEdge& operator=(const OffsetEdge& rhs);

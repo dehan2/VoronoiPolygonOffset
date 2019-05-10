@@ -22,10 +22,11 @@ OffsetEdge::OffsetEdge(const OffsetEdge& rhs)
 
 
 
-OffsetEdge::OffsetEdge(const int& ID, OffsetVertex* startVtx)
+OffsetEdge::OffsetEdge(const int& ID, OffsetVertex* startVtx, OffsetVertex* endVtx)
 {
 	m_ID = ID;
 	m_startVtx = startVtx;
+	m_endVtx = endVtx;
 }
 
 

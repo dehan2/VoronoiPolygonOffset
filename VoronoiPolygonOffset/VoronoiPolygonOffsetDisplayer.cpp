@@ -1,6 +1,7 @@
 #include "VoronoiPolygonOffsetDisplayer.h"
 #include "OffsetEdge.h"
 #include "OffsetVertex.h"
+#include "rg_RQBzCurve2D.h"
 
 VoronoiPolygonOffsetDisplayer::VoronoiPolygonOffsetDisplayer(QObject *parent)
 	: QGraphicsScene(parent)
@@ -47,13 +48,47 @@ void VoronoiPolygonOffsetDisplayer::draw_VD()
 		if (pVD->get_location_status_of_edge(edge)
 			== PolygonVD2D::VDEntity_Location_Status::INSIDE_POLYGON)
 		{
-			rg_Point2D startPt = edge->getStartVertex()->getLocation();
-			rg_Point2D endPt = edge->getEndVertex()->getLocation();
+			Generator2D* leftGenerator = static_cast<Generator2D*>(edge->getLeftFace()->getGenerator()->user_data());
+			Generator2D* rightGenerator = static_cast<Generator2D*>(edge->getRightFace()->getGenerator()->user_data());
 
-			QPointF p1(startPt.getX(), startPt.getY());
-			QPointF p2(endPt.getX(), endPt.getY());
-			addLine(QLineF(p1, p2), QPen(Qt::blue));
+			if (leftGenerator->type() == Generator2D::EDGE_G && rightGenerator->type() == Generator2D::EDGE_G)
+			{
+				rg_Point2D startPt = edge->getStartVertex()->getLocation();
+				rg_Point2D endPt = edge->getEndVertex()->getLocation();
+				QPointF p1(startPt.getX(), startPt.getY());
+				QPointF p2(endPt.getX(), endPt.getY());
+				addLine(QLineF(p1, p2), QPen(Qt::blue));
+			}
+			else
+			{
+				if (pVD->get_location_status_of_vvertex(edge->getStartVertex()) == PolygonVD2D::VDEntity_Location_Status::ON_POLYGON_BOUNDARY
+					|| pVD->get_location_status_of_vvertex(edge->getEndVertex()) == PolygonVD2D::VDEntity_Location_Status::ON_POLYGON_BOUNDARY)
+				{
+					rg_Point2D startPt = edge->getStartVertex()->getLocation();
+					rg_Point2D endPt = edge->getEndVertex()->getLocation();
+					QPointF p1(startPt.getX(), startPt.getY());
+					QPointF p2(endPt.getX(), endPt.getY());
+					addLine(QLineF(p1, p2), QPen(Qt::blue));
+				}
+				else
+					draw_parabolic_edge(edge);
+			}			
 		}		
+	}
+}
+
+
+
+void VoronoiPolygonOffsetDisplayer::draw_parabolic_edge(const VEdge2D* edge)
+{
+	rg_RQBzCurve2D curve = pVD->get_geometry_of_edge(edge);
+	for (int i = 0; i < 10; i++)
+	{
+		rg_Point2D startPt = curve.evaluatePt(0.1*i);
+		rg_Point2D endPt = curve.evaluatePt(0.1*(i + 1));
+		QPointF p1(startPt.getX(), startPt.getY());
+		QPointF p2(endPt.getX(), endPt.getY());
+		addLine(QLineF(p1, p2), QPen(Qt::blue));
 	}
 }
 

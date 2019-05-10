@@ -62,10 +62,14 @@ public:
 		list<rg_Point2D>& TStack, list<int>& CStack, set<VEdge2D*>& visitedEdges, TRAVERSE_STATUS& status);
 	pair<bool, rg_Point2D> find_offset_vertex_for_trunk(VEdge2D* trunk, const float& offsetAmount);
 
-	list<rg_Point2D> calculate_points_for_trunk_edge(VEdge2D* trunk);
+	void make_offset_edges(vector<Offset>& offsets);
+	void connect_offset_edge_to_vertex(vector<Offset>& offsets);
+
 	list<rg_Point2D> calculate_offset_vertex_for_parabolic_edge(VEdge2D* trunk, const float& offsetAmount);
 
 	pair<Generator2D*, Generator2D*> find_polygon_generators(VEdge2D* edge);
+
+	pair<bool, rg_Point2D> find_intersection_point_between_line_segments(const rg_Line2D& line1, const rg_Line2D& line2);
 
 private:
 	Ui::VoronoiPolygonOffsetClass ui;

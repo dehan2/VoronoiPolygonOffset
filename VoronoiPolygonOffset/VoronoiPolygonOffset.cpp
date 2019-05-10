@@ -1,4 +1,5 @@
 #include "VoronoiPolygonOffset.h"
+#include "rg_GeoFunc.h"
 
 #include <QFileDialog>
 #include <QFileInfo>
@@ -450,35 +451,38 @@ pair<bool, rg_Point2D> VoronoiPolygonOffset::find_offset_vertex_for_trunk(VEdge2
 	Generator2D* leftGenerator = polygonGenerators.first;
 	Generator2D* rightGenerator = polygonGenerators.second;
 
-	rg_Point2D startPt = trunk->getStartVertex()->getLocation();
-	rg_Point2D endPt = trunk->getEndVertex()->getLocation();
-
 	bool doesOffsetVtxExist = false;
 	rg_Point2D offsetVtx;
 
-	if (leftGenerator->type() == Generator2D::EDGE_G)
+	if (leftGenerator->type() == Generator2D::EDGE_G && rightGenerator->type() == Generator2D::EDGE_G)
 	{
+		//Line edge
 		EdgeGenerator2D* edgeGenerator = static_cast<EdgeGenerator2D*>(leftGenerator);
-		rg_Line2D polyEdge(edgeGenerator->get_start_vertex_point(), edgeGenerator->get_end_vertex_point());
-		float distanceToStartPt = polyEdge.getDistance(startPt);
-		float distanceToEndPt = polyEdge.getDistance(endPt);
-		if ((distanceToStartPt - offsetAmount)*(distanceToEndPt - offsetAmount) < 0)
+		rg_Line2D directrixOfParabola(edgeGenerator->get_start_vertex_point(), edgeGenerator->get_end_vertex_point());
+		rg_Line2D offSetLine = directrixOfParabola.make_parallel_line_to_normal_direction(offsetAmount);
+		rg_Line2D trunkLine(trunk->getStartVertex()->getLocation(), trunk->getEndVertex()->getLocation());
+		
+		pair<bool, rg_Point2D> intersectionPoint = find_intersection_point_between_line_segments(trunkLine, offSetLine);
+		if (intersectionPoint.first == true)
 		{
 			doesOffsetVtxExist = true;
-			offsetVtx = (startPt + endPt) / 2;
+			offsetVtx = intersectionPoint.second;
 		}
 	}
-	else if(leftGenerator->type() == Generator2D::VERTEX_G)
+	else
 	{
-		VertexGenerator2D* vtxGenerator = static_cast<VertexGenerator2D*>(leftGenerator);
-		rg_Point2D vtxPt = vtxGenerator->get_point();
-		
-		float distanceToStartPt = vtxPt.distance(startPt);
-		float distanceToEndPt = vtxPt.distance(endPt);
-		if ((distanceToStartPt - offsetAmount)*(distanceToEndPt - offsetAmount) < 0)
+		//Parabolic edge
+		list<rg_Point2D> intersectionPoints = calculate_offset_vertex_for_parabolic_edge(trunk, offsetAmount);
+		if (intersectionPoints.size() == 1)
 		{
 			doesOffsetVtxExist = true;
-			offsetVtx = (startPt + endPt) / 2;
+			offsetVtx = intersectionPoints.front();
+		}
+		else if (intersectionPoints.size() > 1)
+		{
+			cout << "Many intersection Points!" << endl;
+			doesOffsetVtxExist = true;
+			offsetVtx = intersectionPoints.front();
 		}
 	}
 
@@ -487,20 +491,32 @@ pair<bool, rg_Point2D> VoronoiPolygonOffset::find_offset_vertex_for_trunk(VEdge2
 
 
 
-list<rg_Point2D> VoronoiPolygonOffset::calculate_points_for_trunk_edge(VEdge2D* trunk)
+void VoronoiPolygonOffset::make_offset_edges(vector<Offset>& offsets)
 {
-	list<rg_Point2D> trunkPoints;
-
-	Generator2D* leftGenerator = trunk->getLeftFace()->getGenerator();
-	Generator2D* rightGenerator = trunk->getRightFace()->getGenerator();
-
-	if (leftGenerator->type() == Generator2D::VERTEX_G
-		&& rightGenerator->type() == Generator2D::VERTEX_G)
+	for (auto& offset : offsets)
 	{
-		trunkPoints.push_back(trunk->getStartVertex()->getLocation());
+		int edgeSize = 0;
+		for (int i=0; i<offset.get_vertices().size()-1; i++)
+		{
+			offset.get_edges().push_back(OffsetEdge(edgeSize++, &offset.get_vertices().at(i), &offset.get_vertices().at(i+1)));
+		}
+		offset.get_edges().push_back(OffsetEdge(edgeSize++, &offset.get_vertices().back(), &offset.get_vertices().front()));
 	}
+}
 
-	return list<rg_Point2D>();
+
+
+void VoronoiPolygonOffset::connect_offset_edge_to_vertex(vector<Offset>& offsets)
+{
+	for (auto& offset : offsets)
+	{
+		int edgeSize = 0;
+		for (int i = 0; i < offset.get_vertices().size() - 1; i++)
+		{
+			offset.get_edges().push_back(OffsetEdge(edgeSize++, &offset.get_vertices().at(i), &offset.get_vertices().at(i + 1)));
+		}
+		offset.get_edges().push_back(OffsetEdge(edgeSize++, &offset.get_vertices().back(), &offset.get_vertices().front()));
+	}
 }
 
 
@@ -512,13 +528,26 @@ list<rg_Point2D> VoronoiPolygonOffset::calculate_offset_vertex_for_parabolic_edg
 	Generator2D* leftGenerator = polygonGenerators.first;
 	Generator2D* rightGenerator = polygonGenerators.second;
 
+	//list<rg_Point2D> intersectionPts;
+	//if (leftGenerator->type() != Generator2D::VERTEX_G && leftGenerator->type() == Generator2D::EDGE_G)
+	//	return intersectionPts;
+
 	//left G -> vtx, right G -> edge
 	if (leftGenerator->type() == Generator2D::EDGE_G)
 		swap(leftGenerator, rightGenerator);
 
+	// Testing intersection between parabola and line
 
+	EdgeGenerator2D* edgeGenerator = static_cast<EdgeGenerator2D*>(rightGenerator);
+	rg_Line2D directrixOfParabola(edgeGenerator->get_start_vertex_point(), edgeGenerator->get_end_vertex_point());
+	VertexGenerator2D* vertexGenerator = static_cast<VertexGenerator2D*>(leftGenerator);
+	rg_Point2D focusOfParabola = vertexGenerator->get_point();
+	rg_Line2D offSetLine = directrixOfParabola.make_parallel_line_to_normal_direction(offsetAmount);
+	list<rg_Point2D> intersectionPts;
+	int numIntersections = 0;
+	numIntersections = rg_GeoFunc::compute_intersection_between_parabola_and_line(focusOfParabola, directrixOfParabola, offSetLine, intersectionPts);
 
-	return list<rg_Point2D>();
+	return intersectionPts;
 }
 
 
@@ -528,6 +557,41 @@ pair<Generator2D*, Generator2D*> VoronoiPolygonOffset::find_polygon_generators(V
 	Generator2D* leftGenerator = static_cast<Generator2D*>(edge->getLeftFace()->getGenerator()->user_data());
 	Generator2D* rightGenerator = static_cast<Generator2D*>(edge->getRightFace()->getGenerator()->user_data());
 	return make_pair(leftGenerator, rightGenerator);
+}
+
+
+
+pair<bool, rg_Point2D> VoronoiPolygonOffset::find_intersection_point_between_line_segments(const rg_Line2D& line1, const rg_Line2D& line2)
+{
+	float p0_x = line1.getSP().getX();
+	float p1_x = line1.getEP().getX();
+	float p0_y = line1.getSP().getY();
+	float p1_y = line1.getEP().getY();
+
+	float p2_x = line2.getSP().getX();
+	float p3_x = line2.getEP().getX();
+	float p2_y = line2.getSP().getY();
+	float p3_y = line2.getEP().getY();
+
+	float s1_x = p1_x - p0_x;     
+	float s1_y = p1_y - p0_y;
+	float s2_x = p3_x - p2_x;    
+	float s2_y = p3_y - p2_y;
+
+	float s, t;
+	s = (-s1_y * (p0_x - p2_x) + s1_x * (p0_y - p2_y)) / (-s2_x * s1_y + s1_x * s2_y);
+	t = (s2_x * (p0_y - p2_y) - s2_y * (p0_x - p2_x)) / (-s2_x * s1_y + s1_x * s2_y);
+
+	bool doesIntersectionFound = false;
+	rg_Point2D intersectionPoint;
+	if (s >= 0 && s <= 1 && t >= 0 && t <= 1)
+	{
+		doesIntersectionFound = true;
+		intersectionPoint.setX(p0_x + t * s1_x);
+		intersectionPoint.setY(p0_y + t * s1_y);
+	}
+
+	return make_pair(doesIntersectionFound, intersectionPoint);
 }
 
 

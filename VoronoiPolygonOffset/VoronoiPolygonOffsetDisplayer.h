@@ -21,6 +21,7 @@ public:
 
 	void draw_polygon();
 	void draw_VD();
+	void draw_parabolic_edge(const VEdge2D* edge);
 	void draw_offsets();
 	void draw_point(float x, float y, QColor color);
 };
