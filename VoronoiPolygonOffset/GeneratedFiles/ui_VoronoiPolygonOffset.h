@@ -42,7 +42,12 @@ public:
     QPushButton *pushButton_compute_VD;
     QHBoxLayout *horizontalLayout_2;
     QDoubleSpinBox *doubleSpinBox_offsetAmount;
+    QDoubleSpinBox *doubleSpinBox_offsetIncrement;
     QPushButton *pushButton_compute_offset;
+    QPushButton *pushButton_compute_search_path;
+    QPushButton *pushButton_generate_horizontal_search_path;
+    QPushButton *pushButton_generate_verticall_search_path;
+    QPushButton *pushButton_print_plan;
     QSpacerItem *verticalSpacer;
     QWidget *tab_2;
     QMenuBar *menuBar;
@@ -91,9 +96,17 @@ public:
         doubleSpinBox_offsetAmount->setObjectName(QStringLiteral("doubleSpinBox_offsetAmount"));
         doubleSpinBox_offsetAmount->setDecimals(1);
         doubleSpinBox_offsetAmount->setMaximum(1000);
-        doubleSpinBox_offsetAmount->setValue(10);
+        doubleSpinBox_offsetAmount->setValue(3);
 
         horizontalLayout_2->addWidget(doubleSpinBox_offsetAmount);
+
+        doubleSpinBox_offsetIncrement = new QDoubleSpinBox(tab);
+        doubleSpinBox_offsetIncrement->setObjectName(QStringLiteral("doubleSpinBox_offsetIncrement"));
+        doubleSpinBox_offsetIncrement->setDecimals(1);
+        doubleSpinBox_offsetIncrement->setMinimum(1);
+        doubleSpinBox_offsetIncrement->setValue(3);
+
+        horizontalLayout_2->addWidget(doubleSpinBox_offsetIncrement);
 
         pushButton_compute_offset = new QPushButton(tab);
         pushButton_compute_offset->setObjectName(QStringLiteral("pushButton_compute_offset"));
@@ -102,6 +115,26 @@ public:
 
 
         verticalLayout->addLayout(horizontalLayout_2);
+
+        pushButton_compute_search_path = new QPushButton(tab);
+        pushButton_compute_search_path->setObjectName(QStringLiteral("pushButton_compute_search_path"));
+
+        verticalLayout->addWidget(pushButton_compute_search_path);
+
+        pushButton_generate_horizontal_search_path = new QPushButton(tab);
+        pushButton_generate_horizontal_search_path->setObjectName(QStringLiteral("pushButton_generate_horizontal_search_path"));
+
+        verticalLayout->addWidget(pushButton_generate_horizontal_search_path);
+
+        pushButton_generate_verticall_search_path = new QPushButton(tab);
+        pushButton_generate_verticall_search_path->setObjectName(QStringLiteral("pushButton_generate_verticall_search_path"));
+
+        verticalLayout->addWidget(pushButton_generate_verticall_search_path);
+
+        pushButton_print_plan = new QPushButton(tab);
+        pushButton_print_plan->setObjectName(QStringLiteral("pushButton_print_plan"));
+
+        verticalLayout->addWidget(pushButton_print_plan);
 
         verticalSpacer = new QSpacerItem(20, 40, QSizePolicy::Minimum, QSizePolicy::Expanding);
 
@@ -130,6 +163,10 @@ public:
         QObject::connect(pushButton_open_polygon, SIGNAL(clicked()), VoronoiPolygonOffsetClass, SLOT(open_polygon_file()));
         QObject::connect(pushButton_compute_VD, SIGNAL(clicked()), VoronoiPolygonOffsetClass, SLOT(compute_VD()));
         QObject::connect(pushButton_compute_offset, SIGNAL(clicked()), VoronoiPolygonOffsetClass, SLOT(compute_offset()));
+        QObject::connect(pushButton_compute_search_path, SIGNAL(clicked()), VoronoiPolygonOffsetClass, SLOT(compute_search_path()));
+        QObject::connect(pushButton_generate_horizontal_search_path, SIGNAL(clicked()), VoronoiPolygonOffsetClass, SLOT(compute_horizontal_search_path()));
+        QObject::connect(pushButton_generate_verticall_search_path, SIGNAL(clicked()), VoronoiPolygonOffsetClass, SLOT(compute_vertical_search_path()));
+        QObject::connect(pushButton_print_plan, SIGNAL(clicked()), VoronoiPolygonOffsetClass, SLOT(output_plans()));
 
         QMetaObject::connectSlotsByName(VoronoiPolygonOffsetClass);
     } // setupUi
@@ -137,9 +174,13 @@ public:
     void retranslateUi(QMainWindow *VoronoiPolygonOffsetClass)
     {
         VoronoiPolygonOffsetClass->setWindowTitle(QApplication::translate("VoronoiPolygonOffsetClass", "VoronoiPolygonOffset", nullptr));
-        pushButton_open_polygon->setText(QApplication::translate("VoronoiPolygonOffsetClass", "Open Polygon", nullptr));
+        pushButton_open_polygon->setText(QApplication::translate("VoronoiPolygonOffsetClass", "Input Polygon", nullptr));
         pushButton_compute_VD->setText(QApplication::translate("VoronoiPolygonOffsetClass", "Compute VD", nullptr));
         pushButton_compute_offset->setText(QApplication::translate("VoronoiPolygonOffsetClass", "Compute Offset", nullptr));
+        pushButton_compute_search_path->setText(QApplication::translate("VoronoiPolygonOffsetClass", "Generate Search Path", nullptr));
+        pushButton_generate_horizontal_search_path->setText(QApplication::translate("VoronoiPolygonOffsetClass", "Generate Horizontal Search Path", nullptr));
+        pushButton_generate_verticall_search_path->setText(QApplication::translate("VoronoiPolygonOffsetClass", "Generate Vertical Search Path", nullptr));
+        pushButton_print_plan->setText(QApplication::translate("VoronoiPolygonOffsetClass", "Output Plans", nullptr));
         tabWidget->setTabText(tabWidget->indexOf(tab), QApplication::translate("VoronoiPolygonOffsetClass", "Tab 1", nullptr));
         tabWidget->setTabText(tabWidget->indexOf(tab_2), QApplication::translate("VoronoiPolygonOffsetClass", "Tab 2", nullptr));
     } // retranslateUi

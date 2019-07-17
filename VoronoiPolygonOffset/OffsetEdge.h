@@ -2,6 +2,7 @@
 
 #include "constForPolygonOffset.h"
 #include "VertexGenerator2D.h"
+#include "rg_RQBzCurve2D.h"
 
 class OffsetVertex;
 
@@ -12,6 +13,7 @@ class OffsetEdge
 	OffsetVertex* m_endVtx = nullptr;
 	bool m_isArcEdge = false;
 	VertexGenerator2D* m_reflexVtx = nullptr;
+	rg_RQBzCurve2D m_curve;
 
 public:
 	OffsetEdge();

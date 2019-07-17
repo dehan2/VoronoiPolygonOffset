@@ -4,6 +4,7 @@
 #include "VEdge2D.h"
 
 class OffsetEdge;
+class Offset;
 
 class OffsetVertex
 {
@@ -14,11 +15,13 @@ class OffsetVertex
 	OffsetEdge* m_nextEdge = nullptr;
 	VEdge2D* m_corrVEdge = nullptr;
 
+	Offset* m_offset = nullptr;
+
 public:
 	OffsetVertex();
-	OffsetVertex(const int& ID, const rg_Point2D& coordinate);
-	OffsetVertex(const int& ID, const rg_Point2D& coordinate, VEdge2D* corrVEdge);
-	OffsetVertex(const int& ID, const rg_Point2D& coordinate, VEdge2D* corrVEdge, OffsetEdge* prevEdge);
+	OffsetVertex(const int& ID, const rg_Point2D& coordinate, Offset* offset);
+	OffsetVertex(const int& ID, const rg_Point2D& coordinate, VEdge2D* corrVEdge, Offset* offset);
+	OffsetVertex(const int& ID, const rg_Point2D& coordinate, VEdge2D* corrVEdge, OffsetEdge* prevEdge, Offset* offset);
 	OffsetVertex(const OffsetVertex& rhs);
 
 	OffsetVertex& operator = (const OffsetVertex& rhs);

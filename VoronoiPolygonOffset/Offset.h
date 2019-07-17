@@ -22,7 +22,7 @@ public:
 	int get_ID() const { return m_ID; }
 	vector<OffsetVertex>& get_vertices() { return m_vertices; }
 	vector<OffsetEdge>& get_edges() { return m_edges; }
-
+	
 	void set_ID(const int& ID) { m_ID = ID; }
 	void add_offset_vertex(const rg_Point2D& coord, VEdge2D* corrVEdge);
 	void close_offset();

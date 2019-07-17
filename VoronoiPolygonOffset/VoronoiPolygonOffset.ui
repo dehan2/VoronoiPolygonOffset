@@ -34,7 +34,7 @@
         <item>
          <widget class="QPushButton" name="pushButton_open_polygon">
           <property name="text">
-           <string>Open Polygon</string>
+           <string>Input Polygon</string>
           </property>
          </widget>
         </item>
@@ -56,7 +56,20 @@
              <double>1000.000000000000000</double>
             </property>
             <property name="value">
-             <double>10.000000000000000</double>
+             <double>3.000000000000000</double>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QDoubleSpinBox" name="doubleSpinBox_offsetIncrement">
+            <property name="decimals">
+             <number>1</number>
+            </property>
+            <property name="minimum">
+             <double>1.000000000000000</double>
+            </property>
+            <property name="value">
+             <double>3.000000000000000</double>
             </property>
            </widget>
           </item>
@@ -68,6 +81,34 @@
            </widget>
           </item>
          </layout>
+        </item>
+        <item>
+         <widget class="QPushButton" name="pushButton_compute_search_path">
+          <property name="text">
+           <string>Generate Search Path</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="pushButton_generate_horizontal_search_path">
+          <property name="text">
+           <string>Generate Horizontal Search Path</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="pushButton_generate_verticall_search_path">
+          <property name="text">
+           <string>Generate Vertical Search Path</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="pushButton_print_plan">
+          <property name="text">
+           <string>Output Plans</string>
+          </property>
+         </widget>
         </item>
         <item>
          <spacer name="verticalSpacer">
@@ -157,12 +198,76 @@
    <slot>compute_offset()</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>940</x>
-     <y>139</y>
+     <x>1089</x>
+     <y>153</y>
     </hint>
     <hint type="destinationlabel">
      <x>1112</x>
      <y>174</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>pushButton_compute_search_path</sender>
+   <signal>clicked()</signal>
+   <receiver>VoronoiPolygonOffsetClass</receiver>
+   <slot>compute_search_path()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>935</x>
+     <y>168</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>1107</x>
+     <y>205</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>pushButton_generate_horizontal_search_path</sender>
+   <signal>clicked()</signal>
+   <receiver>VoronoiPolygonOffsetClass</receiver>
+   <slot>compute_horizontal_search_path()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>890</x>
+     <y>202</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>1107</x>
+     <y>245</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>pushButton_generate_verticall_search_path</sender>
+   <signal>clicked()</signal>
+   <receiver>VoronoiPolygonOffsetClass</receiver>
+   <slot>compute_vertical_search_path()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>1060</x>
+     <y>226</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>1110</x>
+     <y>280</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>pushButton_print_plan</sender>
+   <signal>clicked()</signal>
+   <receiver>VoronoiPolygonOffsetClass</receiver>
+   <slot>output_plans()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>1047</x>
+     <y>261</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>1110</x>
+     <y>328</y>
     </hint>
    </hints>
   </connection>
@@ -171,5 +276,9 @@
   <slot>open_polygon_file()</slot>
   <slot>compute_VD()</slot>
   <slot>compute_offset()</slot>
+  <slot>compute_search_path()</slot>
+  <slot>compute_horizontal_search_path()</slot>
+  <slot>compute_vertical_search_path()</slot>
+  <slot>output_plans()</slot>
  </slots>
 </ui>
