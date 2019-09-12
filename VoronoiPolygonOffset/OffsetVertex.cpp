@@ -24,21 +24,23 @@ OffsetVertex::OffsetVertex(const OffsetVertex& rhs)
 
 
 
-OffsetVertex::OffsetVertex(const int& ID, const rg_Point2D& coordinate, VEdge2D* corrVEdge, Offset* offset)
+OffsetVertex::OffsetVertex(const int& ID, const rg_Point2D& coordinate, const void* corrEntity, const ENTITY_TYPE& entityType, Offset* offset)
 {
 	m_ID = ID;
 	m_coordinate = coordinate;
-	m_corrVEdge = corrVEdge;
+	m_corrEntity = corrEntity;
+	m_entityType = entityType;
 	m_offset = offset;
 }
 
 
 
-OffsetVertex::OffsetVertex(const int& ID, const rg_Point2D& coordinate, VEdge2D* corrVEdge, OffsetEdge* prevEdge, Offset* offset)
+OffsetVertex::OffsetVertex(const int& ID, const rg_Point2D& coordinate, const void* corrEntity, const ENTITY_TYPE& entityType, OffsetEdge* prevEdge, Offset* offset)
 {
 	m_ID = ID;
 	m_coordinate = coordinate;
-	m_corrVEdge = corrVEdge;
+	m_corrEntity = corrEntity;
+	m_entityType = entityType;
 	m_prevEdge = prevEdge;
 	m_offset = offset;
 }
@@ -68,6 +70,7 @@ void OffsetVertex::copy(const OffsetVertex& rhs)
 
 	m_prevEdge = rhs.m_prevEdge;
 	m_nextEdge = rhs.m_nextEdge;
-	m_corrVEdge = rhs.m_corrVEdge;
+	m_corrEntity = rhs.m_corrEntity;
+	m_entityType = rhs.m_entityType;
 	m_offset = rhs.m_offset;
 }

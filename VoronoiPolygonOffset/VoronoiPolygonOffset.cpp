@@ -1,6 +1,9 @@
 ﻿#include "VoronoiPolygonOffset.h"
 #include "rg_GeoFunc.h"
 #include "rg_IntersectFunc.h"
+#include "constForPolygonOffset.h"
+#include <fstream>
+#include <array>
 
 #include <QFileDialog>
 #include <QFileInfo>
@@ -74,6 +77,606 @@ void VoronoiPolygonOffset::wheelEvent(QWheelEvent *event)
 
 
 
+void VoronoiPolygonOffset::readData(const string& filename, Polygon2D& polygon, list<rg_Circle2D>& disks)
+{
+	ifstream fin;
+	fin.open(filename);
+
+	char* seps = " \t\n";
+	char buffer[200];
+	char* context = NULL;
+
+	fin.getline(buffer, 200);
+	rg_INT numVertices = atoi(strtok_s(buffer, seps, &context));
+
+	rg_Point2D* boundaryVertices = new rg_Point2D[numVertices];
+	rg_BoundingBox2D boundingBox;
+
+	for (rg_INT i = 0; i < numVertices; i++)
+	{
+		fin.getline(buffer, 200);
+		rg_REAL x = atof(strtok_s(buffer, seps, &context));
+		rg_REAL y = atof(strtok_s(NULL, seps, &context));
+		boundaryVertices[i].setPoint(x, y);
+
+		rg_Point2D point(x, y);
+		boundingBox.contain(point);
+	}
+
+	rg_Point2D minPt = boundingBox.getMinPt();
+	rg_Point2D maxPt = boundingBox.getMaxPt();
+	rg_REAL deltaX = minPt.getX();
+	rg_REAL deltaY = minPt.getY();
+
+	//for (rg_INT i = 0; i < numVertices; i++)
+	//{
+	//	boundaryVertices[i].setX(boundaryVertices[i].getX() - deltaX);
+	//	boundaryVertices[i].setY(boundaryVertices[i].getY() - deltaY);
+	//}
+
+	//m_boundingBox.setMinPt(rg_Point2D(minPt.getX() - deltaX, minPt.getY() - deltaY));
+	//m_boundingBox.setMaxPt(rg_Point2D(maxPt.getX() - deltaX, maxPt.getY() - deltaY));
+
+	polygon.setBoundaryVertices(boundaryVertices, numVertices);
+
+	fin.getline(buffer, 200);
+	int numDisks = atoi(strtok(buffer, seps));
+
+	for (int i = 0; i < numDisks; ++i) {
+		fin.getline(buffer, 200);
+		double x = atof(strtok(buffer, seps));
+		double y = atof(strtok(NULL, seps));
+		double r = atof(strtok(NULL, seps));
+
+		rg_Circle2D circle(x, y, r);
+		disks.push_back(circle);
+	}
+}
+
+
+
+void VoronoiPolygonOffset::constructVD_of_disks_in_polygon(PolygonVD2D& vd_polygon, const Polygon2D& polygon, const list<rg_Circle2D>& disks)
+{
+	vd_polygon.constructVoronoiDiagram(polygon);
+
+	for (list<rg_Circle2D>::const_iterator i_disk = disks.begin(); i_disk != disks.end(); ++i_disk) {
+		const rg_Circle2D& disk = *i_disk;
+		vd_polygon.insertThisDiskInPolygonVoronoiDiagram(disk);
+	}
+}
+
+
+
+set<const VVertex2D*> VoronoiPolygonOffset::find_vertices_inside_offset(const double& offsetAmount)
+{
+	set<const VVertex2D*> insideVertices;
+
+	for (auto edge : m_insiderVEdges)
+	{
+		VVertex2D* startVtx = edge->getStartVertex();
+		VVertex2D* endVtx = edge->getEndVertex();
+
+		if (startVtx->computeRadiusOfTangentCircle() > offsetAmount)
+			insideVertices.insert(startVtx);
+		
+		if (endVtx->computeRadiusOfTangentCircle() > offsetAmount)
+			insideVertices.insert(endVtx);
+	}
+
+	return insideVertices;
+}
+
+
+
+map<const VEdge2D*, int> VoronoiPolygonOffset::count_intersection_between_offset_and_edge(const set<const VEdge2D*>& insiderVEdges, const double& offsetAmount)
+{
+	map<const VEdge2D*, int> mapFromEdgeToOffsetIntersectionCounter;
+	for (const auto edge : insiderVEdges)
+	{
+		pair<const Generator2D*, const Generator2D*> polygonGenerators = find_polygon_generators(edge);
+
+		const Generator2D* leftGenerator = polygonGenerators.first;
+		const Generator2D* rightGenerator = polygonGenerators.second;
+
+		//Assume: convex polygon
+		if (leftGenerator->type() == Generator2D::EDGE_G && rightGenerator->type() == Generator2D::EDGE_G)
+		{
+			//Line edge
+			const EdgeGenerator2D* edgeGenerator = static_cast<const EdgeGenerator2D*>(leftGenerator);
+			rg_Line2D directrixOfParabola(edgeGenerator->get_start_vertex_point(), edgeGenerator->get_end_vertex_point());
+			rg_Line2D offSetLine = directrixOfParabola.make_parallel_line_to_normal_direction(offsetAmount);
+			rg_Line2D edgeLine(edge->getStartVertex()->getLocation(), edge->getEndVertex()->getLocation());
+
+			pair<bool, rg_Point2D> intersectionPoint = find_intersection_point_between_line_segments(edgeLine, offSetLine);
+			if (intersectionPoint.first == true)
+			{
+				mapFromEdgeToOffsetIntersectionCounter[edge] = 1;
+			}
+			else
+				mapFromEdgeToOffsetIntersectionCounter[edge] = 0;
+		}
+		else if (leftGenerator->type() == Generator2D::DISK_G && rightGenerator->type() == Generator2D::DISK_G)
+		{
+			//Hyperbola-circle intersection
+			const DiskGenerator2D* leftDisk = static_cast<const DiskGenerator2D*>(leftGenerator);
+			const DiskGenerator2D* rightDisk = static_cast<const DiskGenerator2D*>(rightGenerator);
+			array<rg_Circle2D, 2> tangentCircles;
+			mapFromEdgeToOffsetIntersectionCounter[edge] = computeCircleTangentTo2CirclesGivenRadius(leftDisk->getDisk(), rightDisk->getDisk(), offsetAmount, tangentCircles.data());
+		}
+		else
+		{
+			//Circle-parabola intersection
+			list<rg_Point2D> candidates = calculate_offset_vertex_for_parabolic_edge(edge, offsetAmount);
+			mapFromEdgeToOffsetIntersectionCounter[edge] = candidates.size();
+		}
+	}
+
+	return mapFromEdgeToOffsetIntersectionCounter;
+}
+
+
+
+void VoronoiPolygonOffset::make_offset_components(const double& offsetAmount)
+{
+	int firstOffsetID = m_offsets.size();
+
+	set<const VVertex2D*> insideVertices;
+	insideVertices = find_vertices_inside_offset(offsetAmount);
+	map<const VEdge2D*, int> mapFromEdgeToOffsetIntersectionCounter = count_intersection_between_offset_and_edge(m_insiderVEdges, offsetAmount);
+
+	set<const VEdge2D*> unvisitedBranches = m_branches;
+
+	while (!insideVertices.empty())
+	{
+		set<const VVertex2D*> insideVerticesForOffset = propagate_vertices_inside_offset(insideVertices, mapFromEdgeToOffsetIntersectionCounter);
+		
+		list<const VEdge2D*> edgeTraverseList = make_edge_traverse_list_for_offset_component(insideVerticesForOffset, mapFromEdgeToOffsetIntersectionCounter);
+		if (!edgeTraverseList.empty())
+		{
+			list<pair<rg_Point2D, const VEdge2D*>> offsetVertices = find_offset_vertices_geometry(edgeTraverseList, offsetAmount);
+
+			m_offsets.push_back(Offset(m_offsets.size(), offsetAmount));
+			for (auto& offsetVertexPair : offsetVertices)
+			{
+				Offset& offset = m_offsets.back();
+				offset.add_offset_vertex(offsetVertexPair.first, offsetVertexPair.second, V_EDGE);
+			}
+
+			for (auto visitedEdge : edgeTraverseList)
+				if (unvisitedBranches.find(visitedEdge) != unvisitedBranches.end())
+					unvisitedBranches.erase(visitedEdge);
+		}
+		
+		set<DiskGenerator2D*> generatorsInOffsetLoop = find_generators_in_offset_loop(insideVerticesForOffset);
+		for (auto generator : generatorsInOffsetLoop)
+		{
+			m_offsets.push_back(Offset(m_offsets.size(), offsetAmount));
+			Offset& offset = m_offsets.back();
+
+			rg_Point2D offsetPoint = generator->getDisk().getCenterPt() + rg_Point2D(generator->getDisk().getRadius() + offsetAmount, 0);
+			offset.add_offset_vertex(offsetPoint, generator, DISK_G);
+		}
+	}
+
+	//Traverse for branches
+	while (!unvisitedBranches.empty())
+	{
+		auto branch = (*unvisitedBranches.begin());
+
+		VVertex2D* startVtx = branch->getStartVertex();
+		VVertex2D* endVtx = branch->getEndVertex();
+
+		list<const VEdge2D*> edgeTraverseList;
+		if (m_VD.get_location_status_of_vvertex(startVtx) == PolygonVD2D::INSIDE_POLYGON
+			&& startVtx->computeRadiusOfTangentCircle() > offsetAmount)
+		{
+			edgeTraverseList = make_edge_traverse_list_for_offset_component_connected_to_branch(*unvisitedBranches.begin(), startVtx, mapFromEdgeToOffsetIntersectionCounter);
+		}
+		else if (m_VD.get_location_status_of_vvertex(endVtx) == PolygonVD2D::INSIDE_POLYGON
+			&&endVtx->computeRadiusOfTangentCircle() > offsetAmount)
+		{
+			edgeTraverseList = make_edge_traverse_list_for_offset_component_connected_to_branch(*unvisitedBranches.begin(), endVtx, mapFromEdgeToOffsetIntersectionCounter);
+		}
+
+		if (!edgeTraverseList.empty())
+		{
+			list<pair<rg_Point2D, const VEdge2D*>> offsetVertices = find_offset_vertices_geometry(edgeTraverseList, offsetAmount);
+
+			m_offsets.push_back(Offset(m_offsets.size(), offsetAmount));
+			for (auto& offsetVertexPair : offsetVertices)
+			{
+				Offset& offset = m_offsets.back();
+				offset.add_offset_vertex(offsetVertexPair.first, offsetVertexPair.second, V_EDGE);
+			}
+
+			for (auto visitedEdge : edgeTraverseList)
+				if (unvisitedBranches.find(visitedEdge) != unvisitedBranches.end())
+					unvisitedBranches.erase(visitedEdge);
+		}
+		else
+		{
+			unvisitedBranches.erase(branch);
+		}
+	}
+
+	make_offset_edges(m_offsets, firstOffsetID);
+}
+
+
+
+set<const VVertex2D*> VoronoiPolygonOffset::propagate_vertices_inside_offset(set<const VVertex2D*>& vertexSet, const map<const VEdge2D*, int>& mapFromEdgeToOffsetIntersectionCounter)
+{
+	const VVertex2D* firstVtx = *vertexSet.begin();
+	vertexSet.erase(firstVtx);
+
+	set<const VVertex2D*> insideVertices;
+	insideVertices.insert(firstVtx);
+
+	list<const VVertex2D*> propagationQ;
+	propagationQ.push_back(firstVtx);
+
+	while (!propagationQ.empty())
+	{
+		const VVertex2D* currVtx = propagationQ.front();
+		propagationQ.pop_front();
+
+		list<VEdge2D*> incEdges;
+		currVtx->getIncident3VEdges(incEdges);
+		for (auto& incEdge : incEdges)
+		{
+			if (mapFromEdgeToOffsetIntersectionCounter.at(incEdge) == 0)
+			{
+				VVertex2D* adjVtx = incEdge->getOppositVVertex(currVtx);
+				if (vertexSet.find(adjVtx) != vertexSet.end() &&
+					insideVertices.find(adjVtx) == insideVertices.end())
+				{
+					vertexSet.erase(adjVtx);
+					insideVertices.insert(adjVtx);
+					propagationQ.push_back(adjVtx);
+				}
+			}
+		}
+	}
+
+	return insideVertices;
+}
+
+
+
+list<const VEdge2D*> VoronoiPolygonOffset::make_edge_traverse_list_for_offset_component(const set<const VVertex2D*>& insideVertices, const map<const VEdge2D*, int>& mapFromEdgeToOffsetIntersectionCounter)
+{
+	list<const VEdge2D*> traverseList;
+
+	const VEdge2D* initialEdge = nullptr;
+	const VEdge2D* nextEdge = nullptr;
+	VVertex2D* lastVtx = nullptr;
+
+	//Find initial edge
+	for (auto edge : m_insiderVEdges)
+	{
+		VVertex2D* startVtx = edge->getStartVertex();
+		VVertex2D* endVtx = edge->getEndVertex();
+		int counter = insideVertices.count(startVtx) + insideVertices.count(endVtx);
+
+		pair<const Generator2D*, const Generator2D*> polygonGenerators = find_polygon_generators(edge);
+		const Generator2D* leftGenerator = polygonGenerators.first;
+		const Generator2D* rightGenerator = polygonGenerators.second;
+		bool isBranch = (leftGenerator->type() == Generator2D::EDGE_G && rightGenerator->type() == Generator2D::EDGE_G);
+
+		if (counter == 1 && !isBranch)
+		{
+			initialEdge = edge;
+
+			auto it = insideVertices.find(edge->getStartVertex());
+			if (it != insideVertices.end())
+			{
+				nextEdge = initialEdge->getLeftLeg();
+				lastVtx = edge->getStartVertex();
+			}
+			else
+			{
+				nextEdge = initialEdge->getRightHand();
+				lastVtx = edge->getEndVertex();
+			}
+			break;
+		}
+	}
+
+	if (initialEdge != nullptr)
+	{
+		traverseList.push_back(initialEdge);
+
+		//Traverse untili return to initial edge
+		const VEdge2D* currEdge = nextEdge;
+		while (currEdge != initialEdge)
+		{
+			VVertex2D* startVtx = currEdge->getStartVertex();
+			VVertex2D* endVtx = currEdge->getEndVertex();
+			traverseList.push_back(currEdge);
+
+			int intersectionCounter = mapFromEdgeToOffsetIntersectionCounter.at(currEdge);
+			switch (intersectionCounter)
+			{
+			case 1:	//Branch -> return
+			case 2:
+			{
+				if (lastVtx == currEdge->getStartVertex())
+				{
+					nextEdge = currEdge->getLeftLeg();
+				}
+				else
+				{
+					nextEdge = currEdge->getRightHand();
+				}
+			}
+			break;
+			case 0:	//Trunk
+			{
+				if (lastVtx == currEdge->getStartVertex())
+				{
+					nextEdge = currEdge->getRightHand();
+					lastVtx = currEdge->getEndVertex();
+				}
+				else
+				{
+					nextEdge = currEdge->getLeftLeg();
+					lastVtx = currEdge->getStartVertex();
+				}
+			}
+			break;
+			default:
+				cout << "Traverse Fail!" << endl;
+				break;
+			}
+			currEdge = nextEdge;
+		}
+	}
+
+	return traverseList;
+}
+
+
+
+list<const VEdge2D*> VoronoiPolygonOffset::make_edge_traverse_list_for_offset_component_connected_to_branch(const VEdge2D* branch, const VVertex2D* insideVtx, const map<const VEdge2D*, int>& mapFromEdgeToOffsetIntersectionCounter)
+{
+	list<const VEdge2D*> traverseList;
+
+	const VEdge2D* nextEdge = nullptr;
+	VVertex2D* lastVtx = nullptr;
+
+	if (branch->getStartVertex() == insideVtx)
+	{
+		nextEdge = branch->getLeftLeg();
+		lastVtx = branch->getStartVertex();
+	}
+	else
+	{
+		nextEdge = branch->getRightHand();
+		lastVtx = branch->getEndVertex();
+	}
+
+	traverseList.push_back(branch);
+
+	//Traverse untili return to initial edge
+	const VEdge2D* currEdge = nextEdge;
+	while (currEdge != branch)
+	{
+		VVertex2D* startVtx = currEdge->getStartVertex();
+		VVertex2D* endVtx = currEdge->getEndVertex();
+		traverseList.push_back(currEdge);
+
+		int intersectionCounter = mapFromEdgeToOffsetIntersectionCounter.at(currEdge);
+		switch (intersectionCounter)
+		{
+		case 1:	//Branch -> return
+		case 2:
+		{
+			if (lastVtx == currEdge->getStartVertex())
+			{
+				nextEdge = currEdge->getLeftLeg();
+			}
+			else
+			{
+				nextEdge = currEdge->getRightHand();
+			}
+		}
+		break;
+		case 0:	//Trunk
+		{
+			if (lastVtx == currEdge->getStartVertex())
+			{
+				nextEdge = currEdge->getRightHand();
+				lastVtx = currEdge->getEndVertex();
+			}
+			else
+			{
+				nextEdge = currEdge->getLeftLeg();
+				lastVtx = currEdge->getStartVertex();
+			}
+		}
+		break;
+		default:
+			cout << "Traverse Fail!" << endl;
+			break;
+		}
+		currEdge = nextEdge;
+	}
+
+	return traverseList;
+}
+
+
+
+list<pair<rg_Point2D, const VEdge2D*>> VoronoiPolygonOffset::find_offset_vertices_geometry(const list<const VEdge2D*>& traverseList, const double& offsetAmount)
+{
+	list<pair<rg_Point2D, const VEdge2D*>> offsetVertices;
+
+	const VEdge2D* lastEdge = traverseList.back();
+	for (auto edge : traverseList)
+	{
+		pair<const Generator2D*, const Generator2D*> polygonGenerators = find_polygon_generators(edge);
+
+		const Generator2D* leftGenerator = polygonGenerators.first;
+		const Generator2D* rightGenerator = polygonGenerators.second;
+
+		//Assume: convex polygon
+		if (leftGenerator->type() == Generator2D::EDGE_G && rightGenerator->type() == Generator2D::EDGE_G)
+		{
+			//Line edge
+			const EdgeGenerator2D* edgeGenerator = static_cast<const EdgeGenerator2D*>(leftGenerator);
+			rg_Line2D directrixOfParabola(edgeGenerator->get_start_vertex_point(), edgeGenerator->get_end_vertex_point());
+			rg_Line2D offSetLine = directrixOfParabola.make_parallel_line_to_normal_direction(offsetAmount);
+			rg_Line2D edgeLine(edge->getStartVertex()->getLocation(), edge->getEndVertex()->getLocation());
+
+			pair<bool, rg_Point2D> intersectionPoint = find_intersection_point_between_line_segments(edgeLine, offSetLine);
+			if (intersectionPoint.first == true)
+			{
+				rg_Point2D offsetVtx = intersectionPoint.second;
+				offsetVertices.push_back({ offsetVtx, edge });
+			}
+		}
+		else if (leftGenerator->type() == Generator2D::DISK_G && rightGenerator->type() == Generator2D::DISK_G)
+		{
+			//Hyperbola-circle intersection
+			const DiskGenerator2D* leftDisk = static_cast<const DiskGenerator2D*>(leftGenerator);
+			const DiskGenerator2D* rightDisk = static_cast<const DiskGenerator2D*>(rightGenerator);
+			array<rg_Circle2D, 2> tangentCircles;
+			int result = computeCircleTangentTo2CirclesGivenRadius(leftDisk->getDisk(), rightDisk->getDisk(), offsetAmount, tangentCircles.data());
+
+			if (result == 2)
+			{
+				VVertex2D* commonVtx = nullptr;
+				if (edge->getStartVertex() == lastEdge->getStartVertex()
+					|| edge->getStartVertex() == lastEdge->getEndVertex())
+					commonVtx = edge->getStartVertex();
+				else
+					commonVtx = edge->getEndVertex();
+
+				rg_Circle2D closestTangentCircle;
+				double distance1 = tangentCircles.at(0).getCenterPt().distance(commonVtx->getLocation());
+				double distance2 = tangentCircles.at(1).getCenterPt().distance(commonVtx->getLocation());
+				if (distance1 < distance2)
+					closestTangentCircle = tangentCircles.at(0);
+				else
+					closestTangentCircle = tangentCircles.at(1);
+
+				rg_Point2D offsetVtx = closestTangentCircle.getCenterPt();
+				offsetVertices.push_back({ offsetVtx, edge });
+			}	
+		}
+		else
+		{
+			//Circle-parabola intersection
+			list<rg_Point2D> candidates = calculate_offset_vertex_for_parabolic_edge(edge, offsetAmount);
+
+			if (!candidates.empty())
+			{
+				VVertex2D* commonVtx = nullptr;
+				if (edge->getStartVertex() == lastEdge->getStartVertex()
+					|| edge->getStartVertex() == lastEdge->getEndVertex())
+					commonVtx = edge->getStartVertex();
+				else
+					commonVtx = edge->getEndVertex();
+
+				rg_Point2D closestOffsetVertex;
+				double closestDistance = DBL_MAX;
+				for (auto offsetVtx : candidates)
+				{
+					double distance = offsetVtx.distance(commonVtx->getLocation());
+					if (distance < closestDistance)
+					{
+						closestDistance = distance;
+						closestOffsetVertex = offsetVtx;
+					}
+				}
+				offsetVertices.push_back({ closestOffsetVertex, edge });
+			}
+		}
+
+		lastEdge = edge;
+	}
+
+	return offsetVertices;
+}
+
+
+
+list<rg_Point2D> VoronoiPolygonOffset::calculate_offset_vertex_for_parabolic_edge(const VEdge2D* parabolicEdge, const float& offsetAmount)
+{
+	pair<const Generator2D*, const Generator2D*> polygonGenerators = find_polygon_generators(parabolicEdge);
+
+	const Generator2D* leftGenerator = polygonGenerators.first;
+	const Generator2D* rightGenerator = polygonGenerators.second;
+
+	//left G -> disk, right G -> edge
+	if (leftGenerator->type() == Generator2D::EDGE_G)
+		swap(leftGenerator, rightGenerator);
+
+	// Testing intersection between parabola and line
+
+	const EdgeGenerator2D* edgeGenerator = static_cast<const EdgeGenerator2D*>(rightGenerator);
+	rg_Line2D directrixOfParabola(edgeGenerator->get_start_vertex_point(), edgeGenerator->get_end_vertex_point());
+	//DiskGenerator2D* diskGenerator = static_cast<DiskGenerator2D*>(leftGenerator);
+
+	rg_Line2D offSetLine = directrixOfParabola.make_parallel_line_to_normal_direction(offsetAmount);
+	rg_RQBzCurve2D parabola = m_VD.get_geometry_of_edge(parabolicEdge);
+	list<rg_Point2D> intersectionPts;
+	int numIntersections = 0;
+	numIntersections = rg_IntersectFunc::intersectRQBzCurveVsLine(parabola, offSetLine, intersectionPts);
+
+	return intersectionPts;
+}
+
+
+
+pair<const Generator2D*, const  Generator2D*> VoronoiPolygonOffset::find_polygon_generators(const VEdge2D* edge)
+{
+	const Generator2D* leftGenerator = static_cast<const Generator2D*>(edge->getLeftFace()->getGenerator()->user_data());
+	const Generator2D* rightGenerator = static_cast<const Generator2D*>(edge->getRightFace()->getGenerator()->user_data());
+	return make_pair(leftGenerator, rightGenerator);
+}
+
+
+
+pair<bool, rg_Point2D> VoronoiPolygonOffset::find_intersection_point_between_line_segments(const rg_Line2D& line1, const rg_Line2D& line2)
+{
+	float p0_x = line1.getSP().getX();
+	float p1_x = line1.getEP().getX();
+	float p0_y = line1.getSP().getY();
+	float p1_y = line1.getEP().getY();
+
+	float p2_x = line2.getSP().getX();
+	float p3_x = line2.getEP().getX();
+	float p2_y = line2.getSP().getY();
+	float p3_y = line2.getEP().getY();
+
+	float s1_x = p1_x - p0_x;
+	float s1_y = p1_y - p0_y;
+	float s2_x = p3_x - p2_x;
+	float s2_y = p3_y - p2_y;
+
+	float s, t;
+	s = (-s1_y * (p0_x - p2_x) + s1_x * (p0_y - p2_y)) / (-s2_x * s1_y + s1_x * s2_y);
+	t = (s2_x * (p0_y - p2_y) - s2_y * (p0_x - p2_x)) / (-s2_x * s1_y + s1_x * s2_y);
+
+	bool doesIntersectionFound = false;
+	rg_Point2D intersectionPoint;
+	if (s >= 0 && s <= 1 && t >= 0 && t <= 1)
+	{
+		doesIntersectionFound = true;
+		intersectionPoint.setX(p0_x + t * s1_x);
+		intersectionPoint.setY(p0_y + t * s1_y);
+	}
+
+	return make_pair(doesIntersectionFound, intersectionPoint);
+}
+
+
+
+
+
+
+
 void VoronoiPolygonOffset::connect_VVertices_to_polygonVtx()
 {
 	rg_Point2D* polyVertices = rg_NULL;
@@ -132,9 +735,17 @@ void VoronoiPolygonOffset::classify_insider_VEdges()
 			!= PolygonVD2D::VDEntity_Location_Status::INSIDE_POLYGON)
 			it = edges.erase(it);
 		else
-			insiderVEdges.insert(*it++);
+		{
+			if (m_VD.get_location_status_of_vvertex((*it)->getStartVertex()) == PolygonVD2D::ON_POLYGON_BOUNDARY
+				|| m_VD.get_location_status_of_vvertex((*it)->getEndVertex()) == PolygonVD2D::ON_POLYGON_BOUNDARY)
+			{
+				m_branches.insert(*it);
+			}
+			m_insiderVEdges.insert(*it++);
+		}
+			
 
-	for (auto& VVtx : m_mapFromPolygonVtxToVoroVtx)
+	/*for (auto& VVtx : m_mapFromPolygonVtxToVoroVtx)
 	{
 		list<VEdge2D*> incidentEdges;
 		VVtx->getIncident3VEdges(incidentEdges);
@@ -170,213 +781,23 @@ void VoronoiPolygonOffset::classify_insider_VEdges()
 			m_mapForVEdgeType[insiderEdge] = TRUNK;
 			trunkCounter++;
 		}
-	cout << "Trunks: " << trunkCounter << endl;
-}
-
-
-
-void VoronoiPolygonOffset::make_traverse_list()
-{
-	const VVertex2D* startVtx = m_mapFromPolygonVtxToVoroVtx.front();
-	
-	map<VEdge2D*, int> traverseCounter;
-	pair<VEdge2D*, const VVertex2D*> startEdgePair = find_start_edge_pair();
-	
-	VEdge2D* currEdge = startEdgePair.first;
-	const VVertex2D* lastVtx = startEdgePair.second;
-	traverseCounter[currEdge] = 1;
-	m_traverseList.push_back(currEdge);
-
-	VEdge2D* nextEdge = nullptr;
-	VVertex2D* nextVtx = nullptr;
-	if (currEdge->getStartVertex() == lastVtx)
-	{
-		nextEdge = currEdge->getRightHand();
-		nextVtx = currEdge->getEndVertex();
-	}
-	else
-	{
-		nextEdge = currEdge->getLeftLeg();
-		nextVtx = currEdge->getStartVertex();
-	}
-
-
-	while (nextEdge != startEdgePair.first)
-	{
-		currEdge = nextEdge;
-		lastVtx = nextVtx;
-
-		if (m_mapForVEdgeType.at(currEdge) == TRUNK)
-		{
-			if (currEdge->getStartVertex() == lastVtx)
-			{
-				nextEdge = currEdge->getRightHand();
-				nextVtx = currEdge->getEndVertex();
-			}
-			else
-			{
-				nextEdge = currEdge->getLeftLeg();
-				nextVtx = currEdge->getStartVertex();
-			}
-		}
-		else if(traverseCounter.count(currEdge) == 0)
-		{
-			nextEdge = currEdge;
-			if (currEdge->getStartVertex() == lastVtx)
-				nextVtx = currEdge->getEndVertex();
-			else
-				nextVtx = currEdge->getStartVertex();
-
-			traverseCounter[nextEdge] = 1;
-		}
-		else // Returned case
-		{
-			if (currEdge->getStartVertex() == lastVtx)
-			{
-				nextEdge = currEdge->getRightHand();
-				nextVtx = currEdge->getEndVertex();
-			}
-			else
-			{
-				nextEdge = currEdge->getLeftLeg();
-				nextVtx = currEdge->getStartVertex();
-			}
-		}
-		m_traverseList.push_back(currEdge);
-		if (traverseCounter.count(currEdge) == 0)
-			traverseCounter[currEdge] = 1;
-		else
-			traverseCounter.at(currEdge)++;
-	}
-
-	m_traverseList.push_back(startEdgePair.first);
-}
-
-
-
-pair<VEdge2D*, const VVertex2D*> VoronoiPolygonOffset::find_start_edge_pair()
-{
-	//Start from branch edge
-	int currVtxIndex = 0;
-	VEdge2D* startEdge = nullptr;
-	const VVertex2D* startVtx = nullptr;
-	while (startEdge == nullptr)
-	{
-		startVtx = m_mapFromPolygonVtxToVoroVtx.at(currVtxIndex);
-		list<VEdge2D*> incEdges;
-		startVtx->getIncident3VEdges(incEdges);
-		auto& it = incEdges.begin();
-		while (it != incEdges.end())
-			if (m_VD.get_location_status_of_edge(*it)
-				== PolygonVD2D::VDEntity_Location_Status::OUTSIDE_POLYGON)
-				it = incEdges.erase(it);
-			else
-				it++;
-
-		if (incEdges.size() == 1)
-			startEdge = incEdges.front();
-		else
-			currVtxIndex++;
-	}
-
-	return make_pair(startEdge, startVtx);
-}
-
-
-
-void VoronoiPolygonOffset::make_offset_vertices(const float& offsetAmount)
-{
-	list<rg_Point2D> TStack;
-	list<int> CStack;
-	set<VEdge2D*> visitedEdges;
-
-	int IDOfInitialOffset = m_offsets.size();
-	m_offsets.push_back(Offset(IDOfInitialOffset, offsetAmount));
-
-	//m_offsets.push_back(vector<rg_Point2D>());
-	CStack.push_back(IDOfInitialOffset);
-	TRAVERSE_STATUS status = INITIALIZE;
-
-	VEdge2D* lastEdge = m_traverseList.back();
-	for (auto& insiderEdge : m_traverseList)
-	{
-		VVertex2D* startVtxOfTraverse = find_start_vertex_of_traverse(insiderEdge, lastEdge);
-		switch (m_mapForVEdgeType.at(insiderEdge))
-		{
-		case BRANCH:
-			make_offset_vertex_for_branch(insiderEdge, offsetAmount, m_offsets.at(CStack.back()), TStack, CStack, visitedEdges, status);
-			break;
-		case FLUFF:
-			make_offset_vertex_for_fluff(insiderEdge, offsetAmount, m_offsets.at(CStack.back()), TStack, CStack, visitedEdges, status);
-			break;
-		case TRUNK:
-			make_offset_vertex_for_trunk(insiderEdge, offsetAmount, m_offsets, TStack, CStack, visitedEdges, status, startVtxOfTraverse);
-			break;
-		default:
-			break;
-		}
-		lastEdge = insiderEdge;
-
-		if (CStack.empty())
-		{
-			int IDOfNewChain = m_offsets.size();
-			m_offsets.push_back(Offset(IDOfNewChain, offsetAmount));
-			CStack.push_back(IDOfNewChain);
-			status = INITIALIZE;
-		}
-	}
-}
-
-
-
-VVertex2D* VoronoiPolygonOffset::find_start_vertex_of_traverse(VEdge2D* currEdge, VEdge2D* lastEdge)
-{
-	VVertex2D* commonVtx = nullptr;
-	if (currEdge->getStartVertex() == lastEdge->getStartVertex())
-		commonVtx = currEdge->getStartVertex();
-	else if (currEdge->getStartVertex() == lastEdge->getEndVertex())
-		commonVtx = currEdge->getStartVertex();
-	else if (currEdge->getEndVertex() == lastEdge->getStartVertex())
-		commonVtx = currEdge->getEndVertex();
-	else if (currEdge->getEndVertex() == lastEdge->getEndVertex())
-		commonVtx = currEdge->getEndVertex();
-
-	return commonVtx;
-}
-
-
-
-void VoronoiPolygonOffset::make_offset_vertex_for_branch(VEdge2D* branch, const float& offsetAmount, Offset& offset, 
-	list<rg_Point2D>& TStack, list<int>& CStack, set<VEdge2D*>& visitedEdges, TRAVERSE_STATUS& status)
-{
-	if (visitedEdges.count(branch) == 0)
-	{
-		pair<bool, rg_Point2D> offsetVertex = find_offset_vertex_for_branch(branch, offsetAmount);
-		if (offsetVertex.first == true)
-		{
-			offset.add_offset_vertex(offsetVertex.second, branch);
-			if (status == INITIALIZE)
-				status = START;
-		}
-			
-		visitedEdges.insert(branch);
-	}
+	cout << "Trunks: " << trunkCounter << endl;*/
 }
 
 
 
 pair<bool, rg_Point2D> VoronoiPolygonOffset::find_offset_vertex_for_branch(VEdge2D* branch, const float& offsetAmount)
 {
-	pair<Generator2D*, Generator2D*> polygonGenerators = find_polygon_generators(branch);
+	pair<const Generator2D*, const Generator2D*> polygonGenerators = find_polygon_generators(branch);
 
-	Generator2D* leftGenerator = polygonGenerators.first;
-	Generator2D* rightGenerator = polygonGenerators.second;
+	const Generator2D* leftGenerator = polygonGenerators.first;
+	const Generator2D* rightGenerator = polygonGenerators.second;
 
 	bool doesOffsetVtxExist = false;
 	rg_Point2D offsetVtx;
 
 	//Line edge
-	EdgeGenerator2D* edgeGenerator = static_cast<EdgeGenerator2D*>(leftGenerator);
+	const EdgeGenerator2D* edgeGenerator = static_cast<const EdgeGenerator2D*>(leftGenerator);
 	rg_Line2D directrixOfParabola(edgeGenerator->get_start_vertex_point(), edgeGenerator->get_end_vertex_point());
 	rg_Line2D offSetLine = directrixOfParabola.make_parallel_line_to_normal_direction(offsetAmount);
 	rg_Line2D branchLine(branch->getStartVertex()->getLocation(), branch->getEndVertex()->getLocation());
@@ -393,90 +814,13 @@ pair<bool, rg_Point2D> VoronoiPolygonOffset::find_offset_vertex_for_branch(VEdge
 
 
 
-void VoronoiPolygonOffset::make_offset_vertex_for_fluff(VEdge2D* fluff, const float& offsetAmount, Offset& offset, 
-	list<rg_Point2D>& TStack, list<int>& CStack, set<VEdge2D*>& visitedEdges, TRAVERSE_STATUS& status)
-{
-	if (visitedEdges.count(fluff) == 0)
-	{
-		pair<bool, rg_Point2D> offsetVertex = find_offset_vertex_for_fluff(fluff, offsetAmount);
-		if (offsetVertex.first == true)
-		{
-			offset.add_offset_vertex(offsetVertex.second, fluff);
-			if (status == INITIALIZE)
-				status = START;
-		}
-		visitedEdges.insert(fluff);
-	}
-}
-
-
-
-pair<bool, rg_Point2D> VoronoiPolygonOffset::find_offset_vertex_for_fluff(VEdge2D* fluff, const float& offsetAmount)
-{
-	VVertex2D* reflexVtx = nullptr;
-
-	if (m_VD.get_location_status_of_vvertex(fluff->getStartVertex())
-		== PolygonVD2D::VDEntity_Location_Status::ON_POLYGON_BOUNDARY)
-	{
-		reflexVtx = fluff->getStartVertex();
-	}
-	else
-	{
-		reflexVtx = fluff->getEndVertex();
-	}
-		
-	bool doesOffsetVtxExist = false;
-	rg_Point2D offsetVtx;
-
-	//Line-circle intersection
-	rg_Circle2D circle(reflexVtx->getLocation(), offsetAmount);
-	rg_Line2D fluffLine(fluff->getStartVertex()->getLocation(), fluff->getEndVertex()->getLocation());
-
-	rg_Point2D* intersectionPoints = new rg_Point2D[2];
-	int numIntersection = rg_GeoFunc::compute_intersection_between_circle_and_line_segment(circle, fluffLine, intersectionPoints);
-	if (numIntersection > 0)
-	{
-		doesOffsetVtxExist = true;
-		offsetVtx = intersectionPoints[0];
-	}
-
-	delete[] intersectionPoints;
-	return make_pair(doesOffsetVtxExist, offsetVtx);
-}
-
-
-
-void VoronoiPolygonOffset::make_offset_vertex_for_trunk(VEdge2D* trunk, const float& offsetAmount, vector<Offset>& offsets,
-	list<rg_Point2D>& TStack, list<int>& CStack, set<VEdge2D*>& visitedEdges, TRAVERSE_STATUS& status, VVertex2D* startVtxOfTraverse)
-{
-	pair<bool, list<rg_Point2D>> offsetVerticesInfo = find_offset_vertex_for_trunk(trunk, offsetAmount);
-	if (offsetVerticesInfo.first == true)
-	{
-/*
-		cout << "Curr trunk: " << trunk->getID() << " - vtx: "<<offsetVerticesInfo.second.size()<<endl;
-
-		if (trunk == firstTrunk)
-			cout << "Trunk again" << endl;
-		if (firstTrunk == nullptr)
-			firstTrunk = trunk;*/
-
-		list<rg_Point2D>& offsetVertices = offsetVerticesInfo.second;
-		manage_offset_vertices_order(offsetVertices, startVtxOfTraverse);
-		for (auto& offsetVtx : offsetVertices)
-		{
-			process_offset_vertex_for_trunk(offsetVtx, trunk, offsetAmount, offsets, TStack, CStack, visitedEdges, status);
-		}
-	}
-}
-
-
 
 pair<bool, list<rg_Point2D>> VoronoiPolygonOffset::find_offset_vertex_for_trunk(VEdge2D* trunk, const float& offsetAmount)
 {
-	pair<Generator2D*, Generator2D*> polygonGenerators = find_polygon_generators(trunk);
+	pair<const Generator2D*, const Generator2D*> polygonGenerators = find_polygon_generators(trunk);
 
-	Generator2D* leftGenerator = polygonGenerators.first;
-	Generator2D* rightGenerator = polygonGenerators.second;
+	const Generator2D* leftGenerator = polygonGenerators.first;
+	const Generator2D* rightGenerator = polygonGenerators.second;
 
 	bool doesOffsetVtxExist = false;
 	list<rg_Point2D> offsetVertices;
@@ -484,7 +828,7 @@ pair<bool, list<rg_Point2D>> VoronoiPolygonOffset::find_offset_vertex_for_trunk(
 	if (leftGenerator->type() == Generator2D::EDGE_G && rightGenerator->type() == Generator2D::EDGE_G)
 	{
 		//Line edge
-		EdgeGenerator2D* edgeGenerator = static_cast<EdgeGenerator2D*>(leftGenerator);
+		const EdgeGenerator2D* edgeGenerator = static_cast<const EdgeGenerator2D*>(leftGenerator);
 		rg_Line2D directrixOfParabola(edgeGenerator->get_start_vertex_point(), edgeGenerator->get_end_vertex_point());
 		rg_Line2D offSetLine = directrixOfParabola.make_parallel_line_to_normal_direction(offsetAmount);
 		rg_Line2D trunkLine(trunk->getStartVertex()->getLocation(), trunk->getEndVertex()->getLocation());
@@ -499,7 +843,7 @@ pair<bool, list<rg_Point2D>> VoronoiPolygonOffset::find_offset_vertex_for_trunk(
 	else if (leftGenerator->type() == Generator2D::VERTEX_G && rightGenerator->type() == Generator2D::VERTEX_G)
 	{
 		//Line-circle intersection
-		VertexGenerator2D* vtxGenerator = static_cast<VertexGenerator2D*>(leftGenerator);
+		const VertexGenerator2D* vtxGenerator = static_cast<const VertexGenerator2D*>(leftGenerator);
 		rg_Circle2D circle(vtxGenerator->get_point(), offsetAmount);
 		rg_Line2D trunkLine(trunk->getStartVertex()->getLocation(), trunk->getEndVertex()->getLocation());
 
@@ -542,89 +886,6 @@ void VoronoiPolygonOffset::manage_offset_vertices_order(list<rg_Point2D>& offset
 
 
 
-void VoronoiPolygonOffset::process_offset_vertex_for_trunk(const rg_Point2D& offsetVtx, VEdge2D* trunk, const float& offsetAmount, vector<Offset>& offsets, 
-	list<rg_Point2D>& TStack, list<int>& CStack, set<VEdge2D*>& visitedEdges, TRAVERSE_STATUS& status)
-{
-	if (status != INITIALIZE)
-	{
-		if (!TStack.empty())
-		{
-			float distanceToTop = TStack.back().distance(offsetVtx);
-			cout << "TstackSize: "<<TStack.size()<<", distance: " << distanceToTop << endl;
-		}
-
-		switch (status)
-		{
-		case START:
-		case CONNECT:
-		{
-			if (!TStack.empty() && TStack.back().distance(offsetVtx) < 1.0)
-			{
-				status = END;
-				offsets.at(CStack.back()).close_offset();
-				CStack.pop_back();
-				TStack.pop_back();
-				cout << "End" << endl;
-			}
-			else
-			{
-				status = SPLIT;
-				TStack.push_back(offsetVtx);
-				offsets.at(CStack.back()).add_offset_vertex(offsetVtx, trunk);
-				cout << "Split" << endl;
-			}
-		}
-		break;
-		case END:
-		case SPLIT:
-		{
-			if (TStack.back().distance(offsetVtx) < 1.0)
-			{
-				status = CONNECT;
-				//CStack.pop_back();
-				TStack.pop_back();
-				cout << "Connect" << endl;
-			}
-			else
-			{
-				status = START;
-				TStack.push_back(offsetVtx);
-				offsets.push_back(Offset(offsets.size(), offsetAmount));
-				CStack.push_back(m_offsets.size() - 1);
-				offsets.at(CStack.back()).add_offset_vertex(offsetVtx, trunk);
-				cout << "Start" << endl;
-			}
-		}
-		break;
-		default:
-			cout << "Error case" << endl;
-			break;
-		}
-	}
-	else
-	{
-		status = START;
-		TStack.push_back(offsetVtx);
-		offsets.at(CStack.back()).add_offset_vertex(offsetVtx, trunk);
-		cout << "Start" << endl;
-	}
-}
-
-
-
-void VoronoiPolygonOffset::remove_empty_offsets()
-{
-	auto& it = m_offsets.begin();
-	while (it != m_offsets.end())
-	{
-		if ((*it).get_vertices().empty())
-			it = m_offsets.erase(it);
-		else
-			it++;
-	}
-}
-
-
 
 void VoronoiPolygonOffset::make_offset_edges(vector<Offset>& offsets, const int& IDOfInitialOffset)
 {
@@ -637,7 +898,23 @@ void VoronoiPolygonOffset::make_offset_edges(vector<Offset>& offsets, const int&
 			offset.get_edges().push_back(OffsetEdge(edgeSize++, &offset.get_vertices().at(j), &offset.get_vertices().at(j+1)));
 		}
 		offset.get_edges().push_back(OffsetEdge(edgeSize++, &offset.get_vertices().at(offset.get_vertices().size()-1), &offset.get_vertices().at(0)));
+		
+
+		for (auto& edge : offset.get_edges())
+		{
+			const Generator2D* generatorForOffsetEdge = find_generator_for_offset_edge(edge);
+
+			if (generatorForOffsetEdge->type() == Generator2D::DISK_G)
+			{
+				const DiskGenerator2D* diskGenerator = static_cast<const DiskGenerator2D*>(generatorForOffsetEdge);
+				Arc2D edgeArc = make_arc_for_offset_edge(diskGenerator, edge.get_start_vertex()->get_coordinate(), edge.get_end_vertex()->get_coordinate(), offset.get_offset_amount());
+				edge.set_is_arc_edge(true);
+				edge.set_arc(edgeArc);
+			}
+		}
 	}
+
+	connect_offset_edge_to_vertex(offsets, IDOfInitialOffset);
 }
 
 
@@ -660,576 +937,290 @@ void VoronoiPolygonOffset::connect_offset_edge_to_vertex(vector<Offset>& offsets
 
 
 
-void VoronoiPolygonOffset::find_arc_edges(vector<Offset>& offsets, const int& IDOfInitialOffset)
+
+const Generator2D* VoronoiPolygonOffset::find_generator_for_offset_edge(const OffsetEdge& edge)
 {
-	for (int i = IDOfInitialOffset; i < offsets.size(); i++)
+	OffsetVertex* startVtx = edge.get_start_vertex();
+	OffsetVertex* endVtx = edge.get_end_vertex();
+
+	if (startVtx != endVtx)
 	{
-		Offset& offset = offsets.at(i);
-		for (int j = 0; j < offset.get_edges().size(); j++)
+		const Generator2D* commonGenerator = nullptr;
+		if (startVtx->get_corr_entity() == endVtx->get_corr_entity())
 		{
-			OffsetEdge* currEdge = &offset.get_edges().at(j);
-			
-			//Case 1: edge between fluffs
-			//Case 2: 
-			
-			
-			
-			
-			
-			
-			
-			pair<Generator2D*, Generator2D*> polygonGenerators = find_polygon_generators(currEdge->get_start_vertex()->get_corr_VEdge());
-			VertexGenerator2D* vertexGenerator = nullptr;
-			if (polygonGenerators.first->type() == Generator2D::VERTEX_G)
-				vertexGenerator = static_cast<VertexGenerator2D*>(polygonGenerators.first);
-			else if(polygonGenerators.second->type() == Generator2D::VERTEX_G)
-				vertexGenerator = static_cast<VertexGenerator2D*>(polygonGenerators.second);
-			
-			if (vertexGenerator != nullptr)
-			{
-				currEdge->set_is_arc_edge(true);
-				currEdge->set_reflex_vertex(vertexGenerator);
-			}
-		}
-	}
-}
-
-
-
-list<rg_Point2D> VoronoiPolygonOffset::calculate_offset_vertex_for_parabolic_edge(VEdge2D* trunk, const float& offsetAmount)
-{
-	pair<Generator2D*, Generator2D*> polygonGenerators = find_polygon_generators(trunk);
-
-	Generator2D* leftGenerator = polygonGenerators.first;
-	Generator2D* rightGenerator = polygonGenerators.second;
-
-	//list<rg_Point2D> intersectionPts;
-	//if (leftGenerator->type() != Generator2D::VERTEX_G && leftGenerator->type() == Generator2D::EDGE_G)
-	//	return intersectionPts;
-
-	//left G -> vtx, right G -> edge
-	if (leftGenerator->type() == Generator2D::EDGE_G)
-		swap(leftGenerator, rightGenerator);
-
-	// Testing intersection between parabola and line
-
-	EdgeGenerator2D* edgeGenerator = static_cast<EdgeGenerator2D*>(rightGenerator);
-	rg_Line2D directrixOfParabola(edgeGenerator->get_start_vertex_point(), edgeGenerator->get_end_vertex_point());
-	VertexGenerator2D* vertexGenerator = static_cast<VertexGenerator2D*>(leftGenerator);
-	rg_Point2D focusOfParabola = vertexGenerator->get_point();
-
-	rg_Line2D offSetLine = directrixOfParabola.make_parallel_line_to_normal_direction(offsetAmount);
-	rg_RQBzCurve2D parabola = m_VD.get_geometry_of_edge(trunk);
-	list<rg_Point2D> intersectionPts;
-	int numIntersections = 0;
-	//numIntersections = rg_GeoFunc::compute_intersection_between_parabola_and_line(focusOfParabola, directrixOfParabola, offSetLine, intersectionPts);
-	numIntersections = rg_IntersectFunc::intersectRQBzCurveVsLine(parabola, offSetLine, intersectionPts);
-
-	return intersectionPts;
-}
-
-
-
-pair<Generator2D*, Generator2D*> VoronoiPolygonOffset::find_polygon_generators(VEdge2D* edge)
-{
-	Generator2D* leftGenerator = static_cast<Generator2D*>(edge->getLeftFace()->getGenerator()->user_data());
-	Generator2D* rightGenerator = static_cast<Generator2D*>(edge->getRightFace()->getGenerator()->user_data());
-	return make_pair(leftGenerator, rightGenerator);
-}
-
-
-
-pair<bool, rg_Point2D> VoronoiPolygonOffset::find_intersection_point_between_line_segments(const rg_Line2D& line1, const rg_Line2D& line2)
-{
-	float p0_x = line1.getSP().getX();
-	float p1_x = line1.getEP().getX();
-	float p0_y = line1.getSP().getY();
-	float p1_y = line1.getEP().getY();
-
-	float p2_x = line2.getSP().getX();
-	float p3_x = line2.getEP().getX();
-	float p2_y = line2.getSP().getY();
-	float p3_y = line2.getEP().getY();
-
-	float s1_x = p1_x - p0_x;     
-	float s1_y = p1_y - p0_y;
-	float s2_x = p3_x - p2_x;    
-	float s2_y = p3_y - p2_y;
-
-	float s, t;
-	s = (-s1_y * (p0_x - p2_x) + s1_x * (p0_y - p2_y)) / (-s2_x * s1_y + s1_x * s2_y);
-	t = (s2_x * (p0_y - p2_y) - s2_y * (p0_x - p2_x)) / (-s2_x * s1_y + s1_x * s2_y);
-
-	bool doesIntersectionFound = false;
-	rg_Point2D intersectionPoint;
-	if (s >= 0 && s <= 1 && t >= 0 && t <= 1)
-	{
-		doesIntersectionFound = true;
-		intersectionPoint.setX(p0_x + t * s1_x);
-		intersectionPoint.setY(p0_y + t * s1_y);
-	}
-
-	return make_pair(doesIntersectionFound, intersectionPoint);
-}
-
-
-
-void VoronoiPolygonOffset::make_map_from_edge_to_offset(vector<Offset>& offsets, map<VEdge2D*, vector<Offset*>>& mapFromEdgeToOffset)
-{
-	for (auto& offset : m_offsets)
-	{
-		for (auto& vtx : offset.get_vertices())
-		{
-			VEdge2D* corrEdge = vtx.get_corr_VEdge();
-			if (mapFromEdgeToOffset.count(corrEdge) == 0)
-				mapFromEdgeToOffset[corrEdge] = vector<Offset*>();
-
-			mapFromEdgeToOffset.at(corrEdge).push_back(&offset);
-		}
-	}
-}
-
-
-
-
-VEdge2D* VoronoiPolygonOffset::find_edge_to_start_search(const rg_Point2D& currPosition, set<Offset*>& offsetToVisit)
-{
-	VEdge2D* edgeToStartSearch = nullptr;
-	float minDistance = FLT_MAX;
-	for (auto& offset : offsetToVisit)
-	{
-		for (auto& vtx : offset->get_vertices())
-		{
-			float distance = currPosition.distance(vtx.get_coordinate());
-			if (distance < minDistance)
-			{
-				minDistance = distance;
-				edgeToStartSearch = vtx.get_corr_VEdge();
-			}
-		}
-	}
-
-	return edgeToStartSearch;
-}
-
-
-
-rg_Point2D VoronoiPolygonOffset::calculate_drone_start_position()
-{
-	rg_BoundingBox2D boundingBox = calculate_bounding_box();
-
-	float droneX = boundingBox.getCenterPt().getX();
-	float droneY = boundingBox.getMinPt().getY();
-	rg_Point2D startPosition(droneX, droneY);
-	return startPosition;
-}
-
-rg_BoundingBox2D VoronoiPolygonOffset::calculate_bounding_box()
-{
-	rg_BoundingBox2D boundingBox;
-	auto& polygonVertices = m_reader.get_polygon();
-	for (auto& vtx : polygonVertices)
-		boundingBox.contain(rg_Point2D(vtx.at(0), vtx.at(1)));
-
-	return boundingBox;
-}
-
-
-array<float, 3> VoronoiPolygonOffset::calculate_flight_speeds()
-{
-	float leftTravelDistance = 0;
-	float centerTravelDistance = 0;
-	float rightTravelDistance = 0;
-
-	rg_Point2D lastPoint = m_horizontalSearchPath.back();
-	for (auto& vtx : m_horizontalSearchPath)
-	{
-		leftTravelDistance += lastPoint.distance(vtx);
-		lastPoint = vtx;
-	}
-
-	lastPoint = m_searchPath.back();
-	for (auto& vtx : m_searchPath)
-	{
-		centerTravelDistance += lastPoint.distance(vtx);
-		lastPoint = vtx;
-	}
-
-	lastPoint = m_verticalSearchPath.back();
-	for (auto& vtx : m_verticalSearchPath)
-	{
-		rightTravelDistance += lastPoint.distance(vtx);
-		lastPoint = vtx;
-	}
-
-	array<float, 3> flightSpeeds = { 0, 0, 0 };
-	flightSpeeds.at(0) = leftTravelDistance / TARGET_FLIGHT_TIME;
-	flightSpeeds.at(1) = centerTravelDistance / TARGET_FLIGHT_TIME;
-	flightSpeeds.at(2) = rightTravelDistance / TARGET_FLIGHT_TIME;
-
-	cout << "Left distance: " << leftTravelDistance << ", speed: " << flightSpeeds.at(0) << endl;
-	cout << "Center distance: " << centerTravelDistance << ", speed: " << flightSpeeds.at(1) << endl;
-	cout << "Right distance: " << rightTravelDistance << ", speed: " << flightSpeeds.at(2) << endl;
-
-	return flightSpeeds;
-}
-
-
-
-void VoronoiPolygonOffset::write_total_plan(const string& planFileName)
-{
-	m_totalWriter.set_home(m_reader.get_home_lat(), m_reader.get_home_lon());
-
-	rg_BoundingBox2D boundingBox = calculate_bounding_box();
-	float margin = 5;
-	rg_Point2D geoFenceDLVtx(boundingBox.getMinPt().getX() - margin, boundingBox.getMinPt().getY() - margin);
-	rg_Point2D geoFenceURVtx(boundingBox.getMaxPt().getX() + margin, boundingBox.getMaxPt().getY() + margin);
-
-	array<float, 4> params = { 0,0,0,0 };
-	array<float, 2> geoFenceDLGps = m_totalWriter.translate_coord_to_gps(geoFenceDLVtx.getX(), geoFenceDLVtx.getY());
-	array<float, 2> geoFenceURGps = m_totalWriter.translate_coord_to_gps(geoFenceURVtx.getX(), geoFenceURVtx.getY());
-	m_totalWriter.set_geoFence(geoFenceDLGps, geoFenceURGps);
-
-	rg_Point2D launchCoord = m_horizontalSearchPath.front();
-	array<float, 2> launchGps = m_totalWriter.translate_coord_to_gps(launchCoord.getX(), launchCoord.getY());
-
-	m_totalWriter.set_launchPoint(launchGps.at(0), launchGps.at(1));//drone start point
-
-	m_totalWriter.set_frame(3);
-	m_totalWriter.set_altitude(5);
-	m_totalWriter.set_command(16);
-	m_totalWriter.set_params(params);
-	m_totalWriter.set_hoverspeed(1);
-	//plan1.set_hoverspeed(5);
-
-	vector<array<float, 2>> wayPoints;
-	{
-		for (auto& vtx : m_horizontalSearchPath)
-			wayPoints.push_back({ (float)vtx.getX(), (float)vtx.getY() });
-		wayPoints.push_back({ (float)m_horizontalSearchPath.front().getX(), (float)m_horizontalSearchPath.front().getY() });
-
-		for (auto& vtx : m_searchPath)
-			wayPoints.push_back({ (float)vtx.getX(), (float)vtx.getY() });
-		wayPoints.push_back({ (float)m_searchPath.front().getX(), (float)m_searchPath.front().getY() });
-
-		for (auto& vtx : m_verticalSearchPath)
-			wayPoints.push_back({ (float)vtx.getX(), (float)vtx.getY() });
-		wayPoints.push_back({ (float)m_verticalSearchPath.front().getX(), (float)m_verticalSearchPath.front().getY() });
-	}
-
-	m_totalWriter.set_polygons(wayPoints);
-	m_totalWriter.writePlanFile(planFileName);
-}
-
-
-
-void VoronoiPolygonOffset::write_individual_plan(PlanJsonWriter& writer, vector<rg_Point2D>& searchPath, const float& altitude, const float& speed, const string& planFileName)
-{
-	writer.set_home(m_reader.get_home_lat(), m_reader.get_home_lon());
-
-	rg_BoundingBox2D boundingBox = calculate_bounding_box();
-	float margin = 5;
-	rg_Point2D geoFenceDLVtx(boundingBox.getMinPt().getX() - margin, boundingBox.getMinPt().getY() - margin);
-	rg_Point2D geoFenceURVtx(boundingBox.getMaxPt().getX() + margin, boundingBox.getMaxPt().getY() + margin);
-
-	array<float, 4> params = { 0,0,0,0 };
-	array<float, 2> geoFenceDLGps = writer.translate_coord_to_gps(geoFenceDLVtx.getX(), geoFenceDLVtx.getY());
-	array<float, 2> geoFenceURGps = writer.translate_coord_to_gps(geoFenceURVtx.getX(), geoFenceURVtx.getY());
-	writer.set_geoFence(geoFenceDLGps, geoFenceURGps);
-
-	rg_Point2D launchCoord = searchPath.front();
-	array<float, 2> launchGps = writer.translate_coord_to_gps(launchCoord.getX(), launchCoord.getY());
-
-	writer.set_launchPoint(launchGps.at(0), launchGps.at(1));//drone start point
-
-	writer.set_frame(3);
-	writer.set_altitude(altitude);
-	writer.set_command(16);
-	writer.set_params(params);
-	writer.set_hoverspeed(speed);
-
-	vector<array<float, 2>> wayPoints;
-	{
-		for (auto& vtx : searchPath)
-			wayPoints.push_back({ (float)vtx.getX(), (float)vtx.getY() });
-		wayPoints.push_back({ (float)searchPath.front().getX(), (float)searchPath.front().getY() });
-	}
-
-	writer.set_polygons(wayPoints);
-	writer.writePlanFile(planFileName);
-}
-
-
-
-void VoronoiPolygonOffset::compute_offset()
-{
-	float offsetAmount = ui.doubleSpinBox_offsetAmount->value();
-	float offsetIncrement = ui.doubleSpinBox_offsetIncrement->value();
-
-	bool doesNewOffsetFound = true;
-	int IDOfInitialOffset = 0;
-	while (doesNewOffsetFound)
-	{
-		cout << "Start to find offset: " << offsetAmount << endl;
-
-		IDOfInitialOffset = m_offsets.size();
-		make_offset_vertices(offsetAmount);
-		remove_empty_offsets();
-
-		if (m_offsets.size() > IDOfInitialOffset)
-		{
-			make_offset_edges(m_offsets, IDOfInitialOffset);
-			connect_offset_edge_to_vertex(m_offsets, IDOfInitialOffset);
-			offsetAmount += offsetIncrement;
+			const VEdge2D* corrEdge = static_cast<const VEdge2D*>(startVtx->get_corr_entity());
+			pair<const Generator2D*, const Generator2D*> generators = find_polygon_generators(corrEdge);
+			if (generators.first->type() == Generator2D::DISK_G)
+				commonGenerator = generators.first;
+			else
+				commonGenerator = generators.second;
 		}
 		else
 		{
-			doesNewOffsetFound = false;
+			const VEdge2D* corrStartEdge = static_cast<const VEdge2D*>(startVtx->get_corr_entity());
+			const VEdge2D* corrEndEdge = static_cast<const VEdge2D*>(endVtx->get_corr_entity());
+
+			pair<const Generator2D*, const Generator2D*> generatorsForStartVtx = find_polygon_generators(corrStartEdge);
+			pair<const Generator2D*, const Generator2D*> generatorsForEndVtx = find_polygon_generators(corrEndEdge);
+
+			if (generatorsForStartVtx.first == generatorsForEndVtx.first
+				|| generatorsForStartVtx.first == generatorsForEndVtx.second)
+				commonGenerator = generatorsForStartVtx.first;
+			else
+				commonGenerator = generatorsForStartVtx.second;
 		}
+		return commonGenerator;
 	}
-
-	
-	//find_arc_edges(m_offsets, IDOfInitialOffset);
-
-	cout << "Offset found: " << m_offsets.size() << endl;
-	for (int i = 0; i < m_offsets.size(); i++)
+	else
 	{
-		cout << "Offset[" << i << "] : " << m_offsets.at(i).get_vertices().size() << endl;
-	}
-
-	m_scene->pOffsets = &m_offsets;
-	m_scene->draw_offsets(0);
-
-	//ui.doubleSpinBox_offsetAmount->setValue(offsetAmount + 10);
+		//Disk Generator
+		const DiskGenerator2D* generator = static_cast<const DiskGenerator2D*>(startVtx->get_corr_entity());
+		return generator;
+	}	
 }
 
 
 
-void VoronoiPolygonOffset::compute_search_path()
+
+Arc2D VoronoiPolygonOffset::make_arc_for_offset_edge(const DiskGenerator2D* diskGenerator, rg_Point2D startPt, rg_Point2D endPt, double offsetAmount)
 {
-	rg_BoundingBox2D boundingBox;
-	auto& polygonVertices = m_reader.get_polygon();
-	for (auto& vtx : polygonVertices)
-		boundingBox.contain(rg_Point2D(vtx.at(0), vtx.at(1)));
+	rg_Circle2D bigCircle = diskGenerator->getDisk();
+	bigCircle.setRadius(bigCircle.getRadius() + offsetAmount);
 
-	float droneX = boundingBox.getCenterPt().getX();
-	float droneY = boundingBox.getMinPt().getY();
-	rg_Point2D startPosition(droneX, droneY);
-	m_searchPath.push_back(startPosition);
+	Arc2D edgeArc;
+	edgeArc.setCircle(bigCircle);
 
-	map<VEdge2D*, vector<Offset*>> mapFromEdgeToOffset;
-	make_map_from_edge_to_offset(m_offsets, mapFromEdgeToOffset);
+	rg_Point2D center = bigCircle.getCenterPt();
+	rg_REAL    radius = bigCircle.getRadius();
 
-	set<Offset*> offsetToVisit;
-	for (auto& offset : m_offsets)
-		offsetToVisit.insert(&offset);
+	edgeArc.setStartPoint(endPt);
+	edgeArc.setEndPoint(startPt);
 
-	while (!offsetToVisit.empty())
+	return edgeArc;
+}
+
+
+
+set<DiskGenerator2D*> VoronoiPolygonOffset::find_generators_in_offset_loop(set<const VVertex2D*>& vertexSet)
+{
+	set<DiskGenerator2D*> generatorsInOffsetLoop;
+
+	set<DiskGenerator2D*> generatorsAdjacentToVertices;
+	for (auto vtx : vertexSet)
 	{
-		VEdge2D* edgeToStartSearch = find_edge_to_start_search(m_searchPath.back(), offsetToVisit);
-
-		vector<Offset*>& connectedOffsets = mapFromEdgeToOffset.at(edgeToStartSearch);
-
-		for (auto& offset : connectedOffsets)
+		list<VFace2D*> incFaces;
+		vtx->getIncident3VFaces(incFaces);
+		for (auto incFace : incFaces)
 		{
-			int indexOfClosestVtx = -1;
-			vector<OffsetVertex>& vertices = offset->get_vertices();
-			for (int i = 0; i < vertices.size(); i++)
+			Generator2D* generator = incFace->getGenerator();
+			if (generator->type() == Generator2D::DISK_G)
+				generatorsAdjacentToVertices.insert(static_cast<DiskGenerator2D*>(generator));
+		}
+	}
+
+	for (auto generator : generatorsAdjacentToVertices)
+	{
+		list<VVertex2D*> boundingVertices;
+		generator->assigned_face()->getBoundaryVVertices(boundingVertices);
+		bool isSurroundedByOffset = true;
+		for (auto vtx : boundingVertices)
+			if (vertexSet.find(vtx) == vertexSet.end())
 			{
-				if(vertices.at(i).get_corr_VEdge() == edgeToStartSearch)
-					indexOfClosestVtx = i;
+				isSurroundedByOffset = false;
+				break;
 			}
 
-			for (int i = 0; i < vertices.size(); i++)
+		if (isSurroundedByOffset)
+			generatorsInOffsetLoop.insert(generator);
+	}
+
+	return generatorsInOffsetLoop;
+}
+
+
+
+float VoronoiPolygonOffset::calculate_offset_length()
+{
+	float offsetLength = 0.0f;
+	for (auto offset : m_offsets)
+	{
+		vector<OffsetEdge>& edges = offset.get_edges();
+		for (auto& edge : edges)
+		{
+			if (edge.get_is_arc_edge() == false)
 			{
-				int indexOfVtx = i + indexOfClosestVtx;
-				if (indexOfVtx >= vertices.size())
-					indexOfVtx -= vertices.size();
-
-				OffsetVertex& vtx = vertices.at(indexOfVtx);
-				m_searchPath.push_back(vtx.get_coordinate());
+				rg_Point2D startPt = edge.get_start_vertex()->get_coordinate();
+				rg_Point2D endPt = edge.get_end_vertex()->get_coordinate();
+				offsetLength += startPt.distance(endPt);
 			}
-			m_searchPath.push_back(vertices.at(indexOfClosestVtx).get_coordinate());
-			offsetToVisit.erase(offset);
+			else
+			{
+				const Arc2D& arc = edge.get_arc();
+				float radius = arc.getRadius();
+				float angle = arc.angle();
+				float length = abs(radius * angle);
+				offsetLength += length;
+			}
 		}
 	}
-
-	m_scene->pSearchPath = &m_searchPath;
-	m_scene->draw_search_path();
-}
-
-
-bool comparePointsByXIncrement(const rg_Point2D& lhs, const rg_Point2D& rhs)
-{
-	return lhs.getX() < rhs.getX();
-}
-
-bool comparePointsByYIncrement(const rg_Point2D& lhs, const rg_Point2D& rhs)
-{
-	return lhs.getY() < rhs.getY();
-}
-
-
-void VoronoiPolygonOffset::compute_horizontal_search_path()
-{
-	rg_BoundingBox2D boundingBox;
-	auto& polygonVertices = m_reader.get_splittedPolygon().at(0);
-	for (auto& vtx : polygonVertices)
-		boundingBox.contain(rg_Point2D(vtx.at(0), vtx.at(1)));
-
-	list<rg_Line2D> polygonLines;
-	auto& lastPt = m_reader.get_splittedPolygon().at(0).back();
-	rg_Point2D lastVtx(lastPt.at(0), lastPt.at(1));
-	for (auto& pt : m_reader.get_splittedPolygon().at(0))
-	{
-		rg_Point2D currVtx(pt.at(0), pt.at(1));
-		polygonLines.push_back(rg_Line2D(lastVtx, currVtx));
-		lastVtx = currVtx;
-	}
-	
-	rg_Point2D startPosition = calculate_drone_start_position();
-	startPosition.setX(startPosition.getX() - 5);
-
-	m_horizontalSearchPath.push_back(startPosition);
-	bool goLeft = true;
-	float amount = boundingBox.getMinPt().getY() + ui.doubleSpinBox_offsetAmount->value();
-	float increment = ui.doubleSpinBox_offsetIncrement->value();
-	float maxAmount = boundingBox.getMaxPt().getY();
-
-	while(amount < maxAmount)
-	{
-		rg_Point2D searchLineLeftPt(boundingBox.getMinPt().getX() - 10, amount);
-		rg_Point2D searchLineRightPt(boundingBox.getMaxPt().getX() + 10, amount);
-		rg_Line2D searchLine(searchLineLeftPt, searchLineRightPt);
-		
-		list<rg_Point2D> intersectionPoints;
-		for (auto& polygonLine : polygonLines)
-		{
-			rg_Point2D intersectionPoint; 
-			bool doesIntersect = rg_GeoFunc::compute_intersection_between_two_line_segments(searchLine, polygonLine, intersectionPoint);
-			if (doesIntersect)
-				intersectionPoints.push_back(intersectionPoint);
-		}
-
-		intersectionPoints.sort(comparePointsByXIncrement);
-		if (goLeft)
-			intersectionPoints.reverse();
-
-		for (auto& intersectionPoint : intersectionPoints)
-		{
-			m_horizontalSearchPath.push_back(intersectionPoint);
-		}
-
-		goLeft = !goLeft;
-		amount += increment;
-	}
-
-	m_scene->pHorizontalSearchPath = &m_horizontalSearchPath;
-	m_scene->draw_horizontal_search_path();
-}
-
-
-
-void VoronoiPolygonOffset::compute_vertical_search_path()
-{
-	rg_BoundingBox2D boundingBox;
-	auto& polygonVertices = m_reader.get_splittedPolygon().at(2);
-	for (auto& vtx : polygonVertices)
-		boundingBox.contain(rg_Point2D(vtx.at(0), vtx.at(1)));
-
-	list<rg_Line2D> polygonLines;
-	auto& lastPt = m_reader.get_splittedPolygon().at(2).back();
-	rg_Point2D lastVtx(lastPt.at(0), lastPt.at(1));
-	for (auto& pt : m_reader.get_splittedPolygon().at(2))
-	{
-		rg_Point2D currVtx(pt.at(0), pt.at(1));
-		polygonLines.push_back(rg_Line2D(lastVtx, currVtx));
-		lastVtx = currVtx;
-	}
-
-	rg_Point2D startPosition = calculate_drone_start_position();
-	startPosition.setX(startPosition.getX() + 5);
-
-	m_verticalSearchPath.push_back(startPosition);
-	bool goDown = false;
-	float amount = boundingBox.getMinPt().getX() + ui.doubleSpinBox_offsetAmount->value();
-	float increment = ui.doubleSpinBox_offsetIncrement->value();
-	float maxAmount = boundingBox.getMaxPt().getX();
-
-	while (amount < maxAmount)
-	{
-		rg_Point2D searchLineBottomPt(amount, boundingBox.getMinPt().getY() - 10);
-		rg_Point2D searchLineCeilingPt(amount, boundingBox.getMaxPt().getY() + 10);
-		rg_Line2D searchLine(searchLineBottomPt, searchLineCeilingPt);
-
-		list<rg_Point2D> intersectionPoints;
-		for (auto& polygonLine : polygonLines)
-		{
-			rg_Point2D intersectionPoint;
-			bool doesIntersect = rg_GeoFunc::compute_intersection_between_two_line_segments(searchLine, polygonLine, intersectionPoint);
-			if (doesIntersect)
-				intersectionPoints.push_back(intersectionPoint);
-		}
-
-		intersectionPoints.sort(comparePointsByYIncrement);
-		if (goDown)
-			intersectionPoints.reverse();
-
-		for (auto& intersectionPoint : intersectionPoints)
-		{
-			m_verticalSearchPath.push_back(intersectionPoint);
-		}
-
-		goDown = !goDown;
-		amount += increment;
-	}
-
-	m_scene->pVerticalSearchPath = &m_verticalSearchPath;
-	m_scene->draw_vertical_search_path();
-}
-
-
-
-void VoronoiPolygonOffset::output_plans()
-{
-	array<float, 3> flightSpeeds = calculate_flight_speeds();
-	write_total_plan("flightPlan_total.plan");
-	write_individual_plan(m_leftWriter, m_horizontalSearchPath, 5, flightSpeeds.at(0), "flightPlan_left.plan");
-	write_individual_plan(m_centerWriter, m_searchPath, 5, flightSpeeds.at(1), "flightPlan_center.plan");
-	write_individual_plan(m_rightWriter, m_verticalSearchPath, 5, flightSpeeds.at(2), "flightPlan_right.plan");
+	return offsetLength;
 }
 
 
 
 void VoronoiPolygonOffset::open_polygon_file()
 {
-	QString QfilePath = QFileDialog::getOpenFileName(this, tr("Open Polygon File"), NULL, tr("Text file(*.plan)"));
+	QString QfilePath = QFileDialog::getOpenFileName(this, tr("Open Polygon File"), NULL, tr("Text file(*.ply)"));
 	QFileInfo fileInfo(QfilePath);
 	string filePath = translate_to_window_path(QfilePath);
 	const char* c_filePath = filePath.c_str();
 	cout << "Load Plan - c_filePath: " << c_filePath << endl;
 
-	m_reader.read_plan_file(c_filePath);
-	m_polygon.load_polygon_vertices(m_reader.get_splittedPolygon().at(1));
+	readData(filePath, m_polygon, m_disks);
 
 	m_scene->pPolygon = &m_polygon;
-	m_scene->pTotalPolygon = &m_reader.get_polygon();
-	m_scene->pLeftPolygon = &m_reader.get_splittedPolygon().at(0);
-	m_scene->pRightPolygon = &m_reader.get_splittedPolygon().at(2);
+	m_scene->pDisks = &m_disks;
 
 	m_scene->calculate_center();
 	m_scene->draw_polygon();
+	m_scene->draw_disks();
 }
 
 
 
 void VoronoiPolygonOffset::compute_VD()
 {
-	m_VD.constructVoronoiDiagram(m_polygon);
+	constructVD_of_disks_in_polygon(m_VD, m_polygon, m_disks);
+
+	cout << "Compute VD complete!" << endl;
+
+	//m_VD.constructVoronoiDiagram(m_polygon);
 	connect_VVertices_to_polygonVtx();
 	classify_insider_VEdges();
-	make_traverse_list();
 
 	m_scene->pVD = &m_VD;
-	m_scene->draw_VD();
+	m_scene->pInsiderEdges = &m_insiderVEdges;
+
+	//m_scene->draw_VD();
+}
+
+
+
+void VoronoiPolygonOffset::compute_offset()
+{
+	int firstOffsetID = m_offsets.size();
+	float offsetAmount = ui.doubleSpinBox_offsetAmount->value();
+
+	make_offset_components(offsetAmount);
+
+	int numOffsetEdges = 0;
+	for (auto& offset : m_offsets)
+	{
+		numOffsetEdges += offset.get_edges().size();
+	}
+
+	float offsetLength = calculate_offset_length();
+
+	cout << "Offset amount: " << offsetAmount << ", num OS: " << m_offsets.size() << ", n(OS): " << numOffsetEdges << ", l(OS): " << offsetLength << endl;
+
+	m_scene->pOffsets = &m_offsets;
+	m_scene->draw_offsets(firstOffsetID);
+
+	float offsetIncrement = ui.doubleSpinBox_offsetIncrement->value();
+	ui.doubleSpinBox_offsetAmount->setValue(offsetAmount + offsetIncrement);
+}
+
+
+
+
+bool compare_points_by_x_coord_in_ascending_order(const pair<rg_Point2D, rg_Circle2D*>& lhs, const pair<rg_Point2D, rg_Circle2D*>& rhs)
+{
+	return lhs.first.getX() < rhs.first.getX();
+}
+
+
+
+void VoronoiPolygonOffset::compute_horizontal_offsets()
+{
+	float offsetAmount = ui.doubleSpinBox_offsetAmount->value();
+	
+	rg_BoundingBox2D box = m_polygon.getBoundingBox();
+	float minX = box.getMinPt().getX()+offsetAmount;
+	float maxX = box.getMaxPt().getX() - offsetAmount;
+
+	float minY = box.getMinPt().getY() + offsetAmount;
+	float maxY = box.getMaxPt().getY() - offsetAmount;
+	
+	float currY = minY;
+
+	while(currY <= maxY)
+	{
+		rg_Line2D line(rg_Point2D(minX, currY), rg_Point2D(maxX, currY));
+
+		list<pair<rg_Point2D, rg_Circle2D*>> intersectionPoints;
+		set<rg_Circle2D*> disksWithIntersection;
+
+		for (auto& circle : m_disks)
+		{
+			array<rg_Point2D, 2> intersectionWithCircle;
+			rg_Circle2D bigCircle(circle.getCenterPt(), circle.getRadius() + offsetAmount);
+			int numIntersection = rg_GeoFunc::compute_intersection_between_circle_and_line_segment(bigCircle, line, intersectionWithCircle.data());
+			for (int j = 0; j < numIntersection; j++)
+				intersectionPoints.push_back({ intersectionWithCircle.at(j), &circle });
+
+			disksWithIntersection.insert(&circle);
+		}
+		intersectionPoints.push_back({ rg_Point2D(minX, currY), nullptr });
+		intersectionPoints.push_back({ rg_Point2D(maxX, currY), nullptr });
+
+		intersectionPoints.sort(compare_points_by_x_coord_in_ascending_order);
+
+		list<rg_Point2D> offsetVertices;
+		for (auto& intersectionPoint : intersectionPoints)
+		{
+			bool isIncluded = false;
+			for (auto& circle : m_disks)
+			{
+				if (&circle != intersectionPoint.second)
+				{
+					float distance = intersectionPoint.first.distance(circle.getCenterPt());
+					if (distance < circle.getRadius() + offsetAmount)
+					{
+						isIncluded = true;
+						break;
+					}
+				}
+			}
+
+			if (!isIncluded)
+				offsetVertices.push_back(intersectionPoint.first);
+		}
+
+		//boundary point test
+		bool onOffset = false;
+		rg_Point2D lastVtx;
+		for (auto offsetVtx : offsetVertices)
+		{
+			if (onOffset)
+			{
+				m_horizontalOffsets.push_back(rg_Line2D(offsetVtx, lastVtx));
+			}
+			onOffset = !onOffset;
+			lastVtx = offsetVtx;
+		}
+
+		currY += offsetAmount;
+	}
+
+	m_scene->pHorizontalOffsets = &m_horizontalOffsets;
+	m_scene->draw_horizontal_offsets();
+
+	int numLS = m_horizontalOffsets.size();
+	float lengthLS = 0.0f;
+
+	for (auto segment : m_horizontalOffsets)
+	{
+		lengthLS += segment.getLength();
+	}
+	cout << "Num LS: " << numLS << ", length: " << lengthLS << endl;
 }

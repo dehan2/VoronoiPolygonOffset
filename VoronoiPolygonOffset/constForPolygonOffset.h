@@ -1,9 +1,13 @@
 #pragma once
 
-enum EDGE_TYPE {FLUFF, BRANCH, TRUNK};
-enum TRAVERSE_STATUS {INITIALIZE, START, END, SPLIT, CONNECT};
+#include <list>
+#include "rg_Point2D.h"
 
-const float SCALE_FROM_REAL_TO_COORD = 20;
-const int TARGET_FLIGHT_TIME = 180;
+using namespace std;
 
-const float INTERVAL_BETWEEN_SEARCH_AREA = 0;
+const double SCALE_FROM_REAL_TO_COORD = 8;
+
+enum ENTITY_TYPE
+{
+	V_EDGE, DISK_G
+};

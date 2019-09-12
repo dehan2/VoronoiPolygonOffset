@@ -20,9 +20,9 @@ Offset::~Offset()
 
 
 
-void Offset::add_offset_vertex(const rg_Point2D& coord, VEdge2D* corrVEdge)
+void Offset::add_offset_vertex(const rg_Point2D& coord, const void* corrEntity, ENTITY_TYPE entityType)
 {
-	m_vertices.push_back(OffsetVertex(m_vertices.size(), coord, corrVEdge, this));
+	m_vertices.push_back(OffsetVertex(m_vertices.size(), coord, corrEntity, entityType, this));
 }
 
 

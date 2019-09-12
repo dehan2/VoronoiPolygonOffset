@@ -12,18 +12,13 @@ class VoronoiPolygonOffsetDisplayer : public QGraphicsScene
 
 public:
 	Polygon2D* pPolygon;
+	list<rg_Circle2D>* pDisks;
+	set<const VEdge2D*>* pInsiderEdges;
 	PolygonVD2D* pVD;
 	vector<Offset>* pOffsets;
-	vector<rg_Point2D>* pSearchPath;
-	vector<rg_Point2D>* pHorizontalSearchPath;
-	vector<rg_Point2D>* pVerticalSearchPath;
+	list<rg_Line2D>* pHorizontalOffsets;
 	
 	rg_Point2D center;
-
-	list<array<float, 2>>* pTotalPolygon;
-
-	list<array<float, 2>>* pLeftPolygon;
-	list<array<float, 2>>* pRightPolygon;
 
 public:
 	VoronoiPolygonOffsetDisplayer(QObject*parent);
@@ -31,12 +26,12 @@ public:
 
 	void calculate_center();
 	void draw_polygon();
+	void draw_disks();
 	void draw_VD();
-	void draw_parabolic_edge(const VEdge2D* edge);
+	void draw_edge(const VEdge2D* edge, int width, QColor color);
 	void draw_offsets(const int startID = 0);
 	void draw_point(float x, float y, QColor color);
 	void draw_line(const rg_Point2D& pt1, const rg_Point2D& pt2, int width, QColor color);
-	void draw_search_path();
-	void draw_horizontal_search_path();
-	void draw_vertical_search_path();
+	void draw_circle(const rg_Point2D& center, const double& radius, int width, QColor color);
+	void draw_horizontal_offsets();
 };

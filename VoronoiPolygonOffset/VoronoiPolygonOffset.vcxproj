@@ -118,8 +118,6 @@
     <ClCompile Include="Offset.cpp" />
     <ClCompile Include="OffsetEdge.cpp" />
     <ClCompile Include="OffsetVertex.cpp" />
-    <ClCompile Include="PlanJsonReader.cpp" />
-    <ClCompile Include="PlanJsonWriter.cpp" />
     <ClCompile Include="VoronoiPolygonOffset.cpp" />
     <ClCompile Include="VoronoiPolygonOffsetDisplayer.cpp" />
   </ItemGroup>
@@ -154,8 +152,6 @@
     <ClInclude Include="Offset.h" />
     <ClInclude Include="OffsetEdge.h" />
     <ClInclude Include="OffsetVertex.h" />
-    <ClInclude Include="PlanJsonReader.h" />
-    <ClInclude Include="PlanJsonWriter.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Condition="Exists('$(QtMsBuild)\qt.targets')">

@@ -2,7 +2,7 @@
 
 #include "constForPolygonOffset.h"
 #include "VertexGenerator2D.h"
-#include "rg_RQBzCurve2D.h"
+#include "Arc2D.h"
 
 class OffsetVertex;
 
@@ -11,9 +11,13 @@ class OffsetEdge
 	int m_ID = -1;
 	OffsetVertex* m_startVtx = nullptr;
 	OffsetVertex* m_endVtx = nullptr;
-	bool m_isArcEdge = false;
-	VertexGenerator2D* m_reflexVtx = nullptr;
-	rg_RQBzCurve2D m_curve;
+	
+	bool m_isArc = false;
+	Arc2D m_arc;
+
+	//for debug
+public:
+	bool isAcute = true;
 
 public:
 	OffsetEdge();
@@ -31,14 +35,14 @@ public:
 	OffsetVertex* get_start_vertex() const { return m_startVtx; }
 	OffsetVertex* get_end_vertex() const { return m_endVtx; }
 
-	bool get_is_arc_edge() const { return m_isArcEdge; }
-	VertexGenerator2D* get_reflex_vertex() const { return m_reflexVtx; }
+	bool get_is_arc_edge() const { return m_isArc; }
+	const Arc2D& get_arc() const { return m_arc; }
 
 	void set_ID(const int& ID) { m_ID = ID; }
 	void set_start_vertex(OffsetVertex* startVtx) { m_startVtx = startVtx; }
 	void set_end_vertex(OffsetVertex* endVtx) { m_endVtx = endVtx; }
 
-	void set_is_arc_edge(const bool& isArcEdge) { m_isArcEdge = isArcEdge; }
-	void set_reflex_vertex(VertexGenerator2D* reflexVtx) { m_reflexVtx = reflexVtx; }
+	void set_is_arc_edge(const bool& isArc) { m_isArc = isArc; }
+	void set_arc(const Arc2D& arc) { m_arc = arc; }
 };
 

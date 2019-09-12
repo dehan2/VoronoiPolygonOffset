@@ -20,11 +20,12 @@ public:
 	~Offset();
 
 	int get_ID() const { return m_ID; }
+	float get_offset_amount() const { return m_offsetAmount; }
 	vector<OffsetVertex>& get_vertices() { return m_vertices; }
 	vector<OffsetEdge>& get_edges() { return m_edges; }
 	
 	void set_ID(const int& ID) { m_ID = ID; }
-	void add_offset_vertex(const rg_Point2D& coord, VEdge2D* corrVEdge);
+	void add_offset_vertex(const rg_Point2D& coord, const void* corrEntity, ENTITY_TYPE entityType);
 	void close_offset();
 };
 
