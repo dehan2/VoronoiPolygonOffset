@@ -13,7 +13,7 @@ class VoronoiPolygonOffsetDisplayer : public QGraphicsScene
 public:
 	Polygon2D* pPolygon;
 	PolygonVD2D* pVD;
-	vector<Offset>* pOffsets;
+	list<Offset>* pOffsets;
 	vector<rg_Point2D>* pSearchPath;
 	vector<rg_Point2D>* pHorizontalSearchPath;
 	vector<rg_Point2D>* pVerticalSearchPath;
@@ -36,6 +36,7 @@ public:
 	void draw_offsets(const int startID = 0);
 	void draw_point(float x, float y, QColor color);
 	void draw_line(const rg_Point2D& pt1, const rg_Point2D& pt2, int width, QColor color);
+	void draw_curves(const list<rg_Point2D>& curvePts, int width, QColor color);
 	void draw_search_path();
 	void draw_horizontal_search_path();
 	void draw_vertical_search_path();

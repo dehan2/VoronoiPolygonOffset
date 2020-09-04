@@ -20,6 +20,7 @@ public:
 	~Offset();
 
 	int get_ID() const { return m_ID; }
+	float get_offset_amount() { return m_offsetAmount; }
 	vector<OffsetVertex>& get_vertices() { return m_vertices; }
 	vector<OffsetEdge>& get_edges() { return m_edges; }
 	

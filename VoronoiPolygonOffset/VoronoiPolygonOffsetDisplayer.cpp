@@ -21,68 +21,31 @@ void VoronoiPolygonOffsetDisplayer::calculate_center()
 	float xSum = 0;
 	float ySum = 0;
 
-	rg_Point2D* boundaryVertices = rg_NULL;
-	int numVertices = 0;
-	pPolygon->getBoundaryVertices(boundaryVertices, numVertices);
-	for (int i = 0; i < numVertices; i++)
+	list<rg_Point2D> boundaryVertices;
+	pPolygon->get_boundary_vertices(boundaryVertices);
+	for (auto& boundaryVtx : boundaryVertices)
 	{
-		xSum += boundaryVertices[i].getX();
-		ySum += boundaryVertices[i].getY();
+		xSum += boundaryVtx.getX();
+		ySum += boundaryVtx.getY();
 	}
 
-	center.setX(xSum / numVertices);
-	center.setY(ySum / numVertices);
+	center.setX(xSum / boundaryVertices.size());
+	center.setY(ySum / boundaryVertices.size());
 }
 
 
 
 void VoronoiPolygonOffsetDisplayer::draw_polygon()
 {
-	/*rg_Point2D* boundaryVertices = rg_NULL;
-	int numVertices = 0;
-	pPolygon->getBoundaryVertices(boundaryVertices, numVertices);
+	list<rg_Point2D> boundaryVertices;
+	pPolygon->get_boundary_vertices(boundaryVertices);
 
-	for (int i = 0; i < numVertices-1; i++)
+	rg_Point2D lastVtx = boundaryVertices.back();
+
+	for (auto& boundaryVtx : boundaryVertices)
 	{
-		draw_line(boundaryVertices[i], boundaryVertices[i + 1], 1, Qt::black);
-	}
-
-	draw_line(boundaryVertices[numVertices - 1], boundaryVertices[0], 1, Qt::black);
-
-	if (boundaryVertices != rg_NULL)
-		delete[] boundaryVertices;
-
-	array<float, 2> lastPt = pLeftPolygon->back();
-	rg_Point2D lastVtx(lastPt.at(0), lastPt.at(1));
-	auto& it = pLeftPolygon->begin();
-	while (it != pLeftPolygon->end())
-	{
-		rg_Point2D currVtx((*it).at(0), (*it).at(1));
-		draw_line(lastVtx, currVtx, 1, Qt::black);
-		lastVtx = currVtx;
-		it++;
-	}
-
-	lastPt = pRightPolygon->back();
-	lastVtx = rg_Point2D(lastPt.at(0), lastPt.at(1));
-	it = pRightPolygon->begin();
-	while (it != pRightPolygon->end())
-	{
-		rg_Point2D currVtx((*it).at(0), (*it).at(1));
-		draw_line(lastVtx, currVtx, 1, Qt::black);
-		lastVtx = currVtx;
-		it++;
-	}*/
-
-	array<float, 2> lastPt = pTotalPolygon->back();
-	rg_Point2D lastVtx(lastPt.at(0), lastPt.at(1));
-	auto& it = pTotalPolygon->begin();
-	while (it != pTotalPolygon->end())
-	{
-		rg_Point2D currVtx((*it).at(0), (*it).at(1));
-		draw_line(lastVtx, currVtx, 1, Qt::black);
-		lastVtx = currVtx;
-		it++;
+		draw_line(lastVtx, boundaryVtx, 1, Qt::black);
+		lastVtx = boundaryVtx;
 	}
 }
 
@@ -97,8 +60,8 @@ void VoronoiPolygonOffsetDisplayer::draw_VD()
 		if (pVD->get_location_status_of_edge(edge)
 			== PolygonVD2D::VDEntity_Location_Status::INSIDE_POLYGON)
 		{
-			Generator2D* leftGenerator = static_cast<Generator2D*>(edge->getLeftFace()->getGenerator()->user_data());
-			Generator2D* rightGenerator = static_cast<Generator2D*>(edge->getRightFace()->getGenerator()->user_data());
+			Generator2D* leftGenerator = static_cast<Generator2D*>(edge->getLeftFace()->getGenerator()->getUserData());
+			Generator2D* rightGenerator = static_cast<Generator2D*>(edge->getRightFace()->getGenerator()->getUserData());
 
 			/*rg_Point2D startPt = edge->getStartVertex()->getLocation();
 			rg_Point2D endPt = edge->getEndVertex()->getLocation();
@@ -106,8 +69,8 @@ void VoronoiPolygonOffsetDisplayer::draw_VD()
 			QPointF p2(endPt.getX(), endPt.getY());
 			addLine(QLineF(p1, p2), QPen(Qt::blue));*/
 
-			if ((leftGenerator->type() == Generator2D::EDGE_G && rightGenerator->type() == Generator2D::EDGE_G)
-				|| (leftGenerator->type() == Generator2D::VERTEX_G && rightGenerator->type() == Generator2D::VERTEX_G))
+			if ((leftGenerator->getType() == Generator2D::EDGE_G && rightGenerator->getType() == Generator2D::EDGE_G)
+				|| (leftGenerator->getType() == Generator2D::VERTEX_G && rightGenerator->getType() == Generator2D::VERTEX_G))
 			{
 				rg_Point2D startPt = edge->getStartVertex()->getLocation();
 				rg_Point2D endPt = edge->getEndVertex()->getLocation();
@@ -125,8 +88,8 @@ void VoronoiPolygonOffsetDisplayer::draw_VD()
 				}
 				else
 					draw_parabolic_edge(edge);
-			}			
-		}		
+			}
+		}
 	}
 }
 
@@ -147,43 +110,41 @@ void VoronoiPolygonOffsetDisplayer::draw_parabolic_edge(const VEdge2D* edge)
 
 void VoronoiPolygonOffsetDisplayer::draw_offsets(const int startID)
 {
-	for (int i=startID; i<pOffsets->size(); i++)
+	for (auto& offset : *pOffsets)
 	{
-		auto& offset = pOffsets->at(i);
-		vector<OffsetVertex>& vertices = offset.get_vertices();
-		rg_Point2D lastPt = vertices.back().get_coordinate();
-		for (auto& vtx : vertices)
+		if (offset.get_ID() >= startID)
 		{
-			rg_Point2D currPt = vtx.get_coordinate();
-			draw_line(lastPt, currPt, 1, Qt::red);
-			lastPt = currPt;
-		}
-
-		/*vector<OffsetEdge>& edges = offset.get_edges();
-		for (auto& edge : edges)
-		{
-			if (edge.get_is_arc_edge() == false)
+			vector<OffsetEdge>& edges = offset.get_edges();
+			for (auto& edge : edges)
 			{
-				rg_Point2D startPt = edge.get_start_vertex()->get_coordinate();
-				rg_Point2D endPt = edge.get_end_vertex()->get_coordinate();
-				draw_line(startPt, endPt, 1, Qt::red);
-			}
-			else
-			{
-				VertexGenerator2D* reflexVtx = edge.get_reflex_vertex();
-				float distance = edge.get_start_vertex()->get_coordinate().distance(reflexVtx->get_point());
-				rg_Point2D lastPoint = edge.get_start_vertex()->get_coordinate();
-				for (int i = 1; i <= 10; i++)
+				if (edge.get_is_arc_edge() == false)
 				{
-					rg_Point2D midPoint = 0.1*i*edge.get_start_vertex()->get_coordinate() + (1 - 0.1*i)*edge.get_end_vertex()->get_coordinate();
-					rg_Point2D direction = midPoint - reflexVtx->get_point();
-					rg_Point2D arcPoint = reflexVtx->get_point() + direction.getUnitVector()*distance;
+					rg_Point2D startPt = edge.get_start_vertex()->get_coordinate();
+					rg_Point2D endPt = edge.get_end_vertex()->get_coordinate();
+					draw_line(startPt, endPt, 1, Qt::red);
+				}
+				else
+				{
+					const rg_RQBzCurve2D& curve = edge.get_curve();
 
-					draw_line(lastPoint, arcPoint, 1, Qt::red);
-					lastPoint = arcPoint;
+					int numPtsOnCurve = 10;
+					if (numPtsOnCurve < 1)
+						numPtsOnCurve = 2;
+
+					list<rg_Point2D> samplingPts;
+					int divisor = numPtsOnCurve - 1;
+					for (int i = 0; i < numPtsOnCurve; i++) 
+					{
+						double parameter = ((double)i) / divisor;
+
+						rg_Point2D pt = curve.evaluatePt(parameter);
+						samplingPts.push_back(pt);
+					}
+
+					draw_curves(samplingPts, 1, Qt::red);
 				}
 			}
-		}*/
+		}		
 	}
 }
 
@@ -202,6 +163,22 @@ void VoronoiPolygonOffsetDisplayer::draw_line(const rg_Point2D& pt1, const rg_Po
 	QPointF p1((pt1.getX()-center.getX())*SCALE_FROM_REAL_TO_COORD, (pt1.getY() - center.getY())*SCALE_FROM_REAL_TO_COORD);
 	QPointF p2((pt2.getX() - center.getX())*SCALE_FROM_REAL_TO_COORD, (pt2.getY() - center.getY())*SCALE_FROM_REAL_TO_COORD);
 	addLine(QLineF(p1, p2), QPen(color, width));
+}
+
+
+
+void VoronoiPolygonOffsetDisplayer::draw_curves(const list<rg_Point2D>& curvePts, int width, QColor color)
+{
+	const rg_Point2D* lastPt = nullptr;
+	for (auto& pt : curvePts)
+	{
+		if (lastPt != nullptr)
+		{
+			draw_line(*lastPt, pt, width, color);
+		}			
+
+		lastPt = &pt;
+	}
 }
 
 

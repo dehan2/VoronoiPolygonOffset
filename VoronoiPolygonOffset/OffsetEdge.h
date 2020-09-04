@@ -33,6 +33,7 @@ public:
 
 	bool get_is_arc_edge() const { return m_isArcEdge; }
 	VertexGenerator2D* get_reflex_vertex() const { return m_reflexVtx; }
+	const rg_RQBzCurve2D& get_curve() const { return m_curve; }
 
 	void set_ID(const int& ID) { m_ID = ID; }
 	void set_start_vertex(OffsetVertex* startVtx) { m_startVtx = startVtx; }
@@ -40,5 +41,7 @@ public:
 
 	void set_is_arc_edge(const bool& isArcEdge) { m_isArcEdge = isArcEdge; }
 	void set_reflex_vertex(VertexGenerator2D* reflexVtx) { m_reflexVtx = reflexVtx; }
+
+	void calculate_curve(const double& offsetAmount);
 };
 

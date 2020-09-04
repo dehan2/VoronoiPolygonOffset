@@ -37,7 +37,7 @@ private:
 	//float m_threshold = 0;
 	//vector<vector<rg_Point2D>> m_offsets;
 
-	vector<Offset> m_offsets;
+	list<Offset> m_offsets;
 
 	list<VEdge2D*> m_traverseList;
 	map<const VEdge2D*, EDGE_TYPE> m_mapForVEdgeType;
@@ -67,24 +67,26 @@ public:
 	VVertex2D* find_start_vertex_of_traverse(VEdge2D* currEdge, VEdge2D* lastEdge);
 
 	void make_offset_vertex_for_branch(VEdge2D* branch, const float& offsetAmount, Offset& offset,
-		list<rg_Point2D>& TStack,	list<int>& CStack, set<VEdge2D*>& visitedEdges, TRAVERSE_STATUS& status);
+		list<rg_Point2D>& TStack,	list<Offset*>& CStack, set<VEdge2D*>& visitedEdges, TRAVERSE_STATUS& status);
 	pair<bool, rg_Point2D> find_offset_vertex_for_branch(VEdge2D* branch, const float& offsetAmount);
 
 	void make_offset_vertex_for_fluff(VEdge2D* fluff, const float& offsetAmount, Offset& offset,
-		list<rg_Point2D>& TStack, list<int>& CStack, set<VEdge2D*>& visitedEdges, TRAVERSE_STATUS& status);
+		list<rg_Point2D>& TStack, list<Offset*>& CStack, set<VEdge2D*>& visitedEdges, TRAVERSE_STATUS& status);
 	pair<bool, rg_Point2D> find_offset_vertex_for_fluff(VEdge2D* fluff, const float& offsetAmount);
 
-	void make_offset_vertex_for_trunk(VEdge2D* trunk, const float& offsetAmount, vector<Offset>& offsets,
-		list<rg_Point2D>& TStack, list<int>& CStack, set<VEdge2D*>& visitedEdges, TRAVERSE_STATUS& status, VVertex2D* startVtxOfTraverse);
+	void make_offset_vertex_for_trunk(VEdge2D* trunk, const float& offsetAmount, list<Offset>& offsets,
+		list<rg_Point2D>& TStack, list<Offset*>& CStack, set<VEdge2D*>& visitedEdges, TRAVERSE_STATUS& status, VVertex2D* startVtxOfTraverse);
 	pair<bool, list<rg_Point2D>> find_offset_vertex_for_trunk(VEdge2D* trunk, const float& offsetAmount);
 	void manage_offset_vertices_order(list<rg_Point2D>& offsetVertices, VVertex2D* startVtxOfTraverse);
-	void process_offset_vertex_for_trunk(const rg_Point2D& offsetVtx, VEdge2D* trunk, const float& offsetAmount, vector<Offset>& offsets,
-		list<rg_Point2D>& TStack, list<int>& CStack, set<VEdge2D*>& visitedEdges, TRAVERSE_STATUS& status);
+	void process_offset_vertex_for_trunk(const rg_Point2D& offsetVtx, VEdge2D* trunk, const float& offsetAmount, list<Offset>& offsets,
+		list<rg_Point2D>& TStack, list<Offset*>& CStack, set<VEdge2D*>& visitedEdges, TRAVERSE_STATUS& status);
+
+	double calculate_edge_length(const VEdge2D* edge);
 
 	void remove_empty_offsets();
-	void make_offset_edges(vector<Offset>& offsets, const int& IDOfInitialOffset);
-	void connect_offset_edge_to_vertex(vector<Offset>& offsets, const int& IDOfInitialOffset);
-	void find_arc_edges(vector<Offset>& offsets, const int& IDOfInitialOffset);
+	void make_offset_edges(list<Offset>& offsets, const int& IDOfInitialOffset);
+	void connect_offset_edge_to_vertex(list<Offset>& offsets, const int& IDOfInitialOffset);
+	void find_arc_edges(list<Offset>& offsets, const int& IDOfInitialOffset);
 
 	list<rg_Point2D> calculate_offset_vertex_for_parabolic_edge(VEdge2D* trunk, const float& offsetAmount);
 
@@ -93,7 +95,7 @@ public:
 	pair<bool, rg_Point2D> find_intersection_point_between_line_segments(const rg_Line2D& line1, const rg_Line2D& line2);
 
 
-	void make_map_from_edge_to_offset(vector<Offset>& offsets, map<VEdge2D*, vector<Offset*>>& mapFromEdgeToOffset);
+	void make_map_from_edge_to_offset(list<Offset>& offsets, map<VEdge2D*, list<Offset*>>& mapFromEdgeToOffset);
 
 	VEdge2D* find_edge_to_start_search(const rg_Point2D& currPosition, set<Offset*>& offsetToVisit);
 
@@ -103,6 +105,8 @@ public:
 	array<float, 3> calculate_flight_speeds();
 	void write_total_plan(const string& planFileName);
 	void write_individual_plan(PlanJsonWriter& writer, vector<rg_Point2D>& searchPath, const float& altitude, const float& speed, const string& planFileName);
+
+	
 
 private:
 	Ui::VoronoiPolygonOffsetClass ui;
