@@ -118,8 +118,6 @@
     <ClCompile Include="Offset.cpp" />
     <ClCompile Include="OffsetEdge.cpp" />
     <ClCompile Include="OffsetVertex.cpp" />
-    <ClCompile Include="PlanJsonReader.cpp" />
-    <ClCompile Include="PlanJsonWriter.cpp" />
     <ClCompile Include="VoronoiPolygonOffset.cpp" />
     <ClCompile Include="VoronoiPolygonOffsetDisplayer.cpp" />
   </ItemGroup>
@@ -140,8 +138,6 @@
     <ClInclude Include="Offset.h" />
     <ClInclude Include="OffsetEdge.h" />
     <ClInclude Include="OffsetVertex.h" />
-    <ClInclude Include="PlanJsonReader.h" />
-    <ClInclude Include="PlanJsonWriter.h" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\dev_vdrc\VUFS\VUFS.vcxproj">

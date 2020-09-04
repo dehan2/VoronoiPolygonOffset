@@ -53,8 +53,8 @@ void OffsetEdge::copy(const OffsetEdge& rhs)
 	m_ID = rhs.m_ID;
 	m_startVtx = rhs.m_startVtx;
 	m_endVtx = rhs.m_endVtx;
-	m_isArcEdge = rhs.m_isArcEdge;
-	m_reflexVtx = rhs.m_reflexVtx;
+	m_isArc = rhs.m_isArc;
+	m_arc = rhs.m_arc;
 }
 
 
